@@ -471,7 +471,7 @@ class MyGame extends ApplicationAdapter {
 										state.Rotate(CenterCell(cell))
 										val axis = graphs(cell).midpoint
 										val rot = new Quaternion(axis, 180f)
-										orientation = orientation.mulLeft(rot)
+										orientation = orientation.mul(rot)
 
 										instances.map(_.transform.idt().rotate(orientation))
 									}
