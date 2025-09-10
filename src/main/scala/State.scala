@@ -47,6 +47,23 @@ class State(cells:Array[Graph], main:MyGame) {
         main.updateColors
     }
 
+    def Rotate(gripFn:Int=>Int){
+        // println("twisted cell:" + cell)
+        val affectedPieces = stateMap.toArray
+        for ((piece, color) <- affectedPieces){
+            var oldCell = piece._1
+            val grip = piece._2
+            val newCell = gripFn(oldCell)
+            // println(f + "+" + grip)
+            // println(grip.toArray.map(gripMap.get(face,_).mkString(",")).mkString(";"))
+            val newGrip = grip.map(gripFn)
+            // println(f + " + " + grip + " -> " + newF + " + " + newGrip + " + " + color)
+            
+            stateMap.addOne((newCell,newGrip),color)
+        }
+        main.updateColors
+    }
+
     def Randomise {
         for ((k,v) <- stateMap){
             stateMap.addOne(k, Random.nextInt(11))

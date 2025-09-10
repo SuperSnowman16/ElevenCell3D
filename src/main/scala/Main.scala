@@ -37,6 +37,8 @@ import Graphs.Node
 import Graphs.Face
 import scala.collection.mutable.HashMap
 import com.badlogic.gdx.Input.Buttons
+import com.badlogic.gdx.graphics.g3d.attributes.DepthTestAttribute
+import com.badlogic.gdx.Input.Keys
 
 
 object MyGame {
@@ -128,15 +130,15 @@ class MyGame extends ApplicationAdapter {
 	println("======================")
 	}
 
-	def ensureUniqueMaterials(): Unit = {
-		for {
-			instance <- instances
-			node <- instance.nodes.asScala
-			part <- node.parts.asScala
-		} {
-			part.material = new com.badlogic.gdx.graphics.g3d.Material(part.material) // clone
-		}
-	}
+	// def ensureUniqueMaterials(): Unit = {
+	// 	for {
+	// 		instance <- instances
+	// 		node <- instance.nodes.asScala
+	// 		part <- node.parts.asScala
+	// 	} {
+	// 		part.material = new com.badlogic.gdx.graphics.g3d.Material(part.material) // clone
+	// 	}
+	// }
 
 
 	def parseMeshID(id: String): (Int, Node) = id match {
@@ -162,6 +164,33 @@ class MyGame extends ApplicationAdapter {
 	}
 
 	val materialMap = new HashMap[String, Material]
+
+
+	def CenterCell(id:Int) : Int => Int = {
+
+
+		val map = new HashMap[Int, Int]()
+
+		val mid = graphs(20)
+		val newMid = graphs(id)
+		map.addOne(mid.color, newMid.color)
+		map.addOne(newMid.color, mid.color)
+
+
+		val f0 = mid.faces(id) 
+		for (v <- f0.verts){
+			val f1 = v.getOffsetFace(f0, 2)
+			val f2 = v.getOffsetFace(f0, -2)
+			map.addOne(f1.oppCell, f2.oppCell)
+			map.addOne(f2.oppCell, f1.oppCell)
+		}
+
+		return x => map.get(x) match {
+			case Some(value) => value
+			case None => x
+		}
+
+	}
 
 	
 
@@ -288,8 +317,9 @@ class MyGame extends ApplicationAdapter {
 				case Some(value) => value
 				case None => 
 					val m = new Material(
-					ColorAttribute.createDiffuse(color)
-					// new BlendingAttribute(true, 1f)
+					ColorAttribute.createDiffuse(color),
+					new BlendingAttribute(true, 1f)
+					// new DepthTestAttribute(false)
 				)
 				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
 				materialMap.addOne(name, m)
@@ -315,7 +345,9 @@ class MyGame extends ApplicationAdapter {
 				case Some(value) => value
 				case None => 
 					val m = new Material(
-					ColorAttribute.createDiffuse(color)
+					ColorAttribute.createDiffuse(color),
+					new BlendingAttribute(true, 1f)
+					// new DepthTestAttribute(false)
 				)
 				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
 				materialMap.addOne(name, m)
@@ -367,7 +399,7 @@ class MyGame extends ApplicationAdapter {
 			instances(j) = new ModelInstance(model) 
 		}
 
-		ensureUniqueMaterials()
+		// ensureUniqueMaterials()
 
 	// state.Twist(10, cells(10).faces(0).FaceTwistFn(1))
 
@@ -433,6 +465,19 @@ class MyGame extends ApplicationAdapter {
 							val btn = button match {
 								case Buttons.LEFT => -1
 								case Buttons.RIGHT => 1
+								case Buttons.MIDDLE =>
+									val (cell, _) = parseMeshID(hit.faceId)
+									if (cell != 20){
+										state.Rotate(CenterCell(cell))
+										val axis = graphs(cell).midpoint
+										val rot = new Quaternion(axis, 180f)
+										orientation = orientation.mulLeft(rot)
+
+										instances.map(_.transform.idt().rotate(orientation))
+									}
+									
+
+									0
 								case _: Int => 0
 							} 
 							// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
@@ -442,10 +487,14 @@ class MyGame extends ApplicationAdapter {
 								case false => 1
 							})
 							if (dir != 0){
-								node match {
-									case f: Face => state.Twist(graphs(cell).color, f.FaceTwistFn(dir)) 
-									case _ => 
+								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+									state.Rotate(node.TwistFn(dir)) 
+										
+									
+								}else{
+									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
 								}
+								
 							}
 								
 							
@@ -459,6 +508,7 @@ class MyGame extends ApplicationAdapter {
 
 				true
 			}
+
 		})
 	}
 

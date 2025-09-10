@@ -86,6 +86,7 @@ object Graphs {
 					val f = faces(i)
 					val newF = newFaces(i)
 					for (j <- 0 until f.p){
+						newF.faces(j) = newFaces(f.faces(j).id)
 						newF.edges(j) = newEdges(f.edges(j).id)
 						newF.verts(j) = newVerts(f.verts(j).id)
 					}
@@ -154,6 +155,7 @@ object Graphs {
 				midpoint = tf(midpoint)
 
 			}
+			
 
 
 
@@ -389,6 +391,8 @@ object Graphs {
 				return (count, firstScore)
 			}
 
+			def TwistFn(dir:Int) : Int => Int = (x => x)
+
 
 			
 		}
@@ -450,7 +454,7 @@ object Graphs {
 
 			}
 
-			def FaceTwistFn(dir:Int) : (Int => Int) = {
+			override def TwistFn(dir:Int) : (Int => Int) = {
 
 				val map = new HashMap[Int,Int]
 				for (i <- 0 until 3){
@@ -530,9 +534,9 @@ object Graphs {
 				edges(mod(index, size))
 			}
 
-			def findEdge(v:Vertex) : Int = {
+			def findEdge(e:Edge) : Int = {
 				for (i <- 0 until size){
-						if (edges(i) == v){
+						if (edges(i) == e){
 						// println(i)
 						return i
 						} 
@@ -578,11 +582,42 @@ object Graphs {
 			
 
 		class Edge(id:Int = -1, vec:Vector3 = null) extends Node(vec, id, 2){
-			
+			override def TwistFn(dir:Int) : (Int => Int) = {
+
+				val map = new HashMap[Int,Int]
+				val (f0, f1) = (getFace(0), getFace(dir))
+				val (v0, v1) = (f0.getVertex(f0.findEdge(this)), f1.getVertex(f1.findEdge(this)))
+				val (i0, i1) = (v0.findFace(f0), v1.findFace(f1))
+				for (j <- 0 until 4){
+					val (c0, c1) = (v0.getFace(i0+j).oppCell, v1.getFace(i1+j).oppCell)
+					map.addOne(c0,c1)
+					map.addOne(c1,c0)
+				}
+				return x => map.get(x) match {
+					case None => x
+					case Some(value) => value
+				}
+				
+			}
 		}
 
 		class Vertex(id:Int = -1, val q:Int, vec:Vector3 = null) extends Node(vec, id, q){
+			override def TwistFn(dir:Int) : (Int => Int) = {
 
+				val map = new HashMap[Int,Int]
+				for (i <- 0 until 5){
+					val (f1, f2) = (getFace(i), getFace(i+dir))
+					val (i1, i2) = (f1.findVertex(this), f2.findVertex(this))
+					map.addOne(f1.oppCell, f2.oppCell)
+					map.addOne(f1.getFace(i1+1).oppCell, f2.getFace(i2+1).oppCell)
+
+				}
+				return x => map.get(x) match {
+					case None => x
+					case Some(value) => value
+				}
+				
+			}
 		}
 
 
