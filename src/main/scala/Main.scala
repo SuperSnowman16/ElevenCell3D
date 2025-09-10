@@ -26,14 +26,26 @@ import Maths3D._
 import com.badlogic.gdx.graphics.g3d.attributes.BlendingAttribute
 import com.badlogic.gdx.math.Vector2
 import Maths3D.Hyperbolic.interpolate
-import MyGame.{stickerSize, depth}
+import MyGame._
 import Maths3D.Hyperbolic.lerp
 import Graphs.Graph
+import com.badlogic.gdx.math.collision.Ray
+import scala.jdk.CollectionConverters._
+import com.badlogic.gdx.math.Intersector
+import com.badlogic.gdx.math.Matrix4
+import Graphs.Node
+import Graphs.Face
+import scala.collection.mutable.HashMap
+import com.badlogic.gdx.Input.Buttons
 
 
 object MyGame {
+
 	val stickerSize = .8f
 	val depth = .7f
+	val cellSpacing = 1f
+	val outerCellScaling = 1f
+	
 	def main(args: Array[String]): Unit = {
 		val config = new Lwjgl3ApplicationConfiguration()
 		config.setTitle("11 Cell")
@@ -50,7 +62,27 @@ class MyGame extends ApplicationAdapter {
 	private var camController: CameraInputController = _
 
 	private var model: Model = _
-	private var instance: ModelInstance = _
+	private var instances = new Array[ModelInstance](21)
+
+	def toGdxColor(c: AWTColor): Color = {
+		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, 1f)
+	}
+
+	val colors = Array(
+		AWTColor.decode("#ffffff"),
+		AWTColor.decode("#ff0000"),
+		AWTColor.decode("#ff9900"),
+		AWTColor.decode("#ffff00"),
+		AWTColor.decode("#00ff00"),
+		AWTColor.decode("#00ffff"),
+		AWTColor.decode("#0080ff"),
+		AWTColor.decode("#0000ff"),
+		AWTColor.decode("#9900ff"),
+		AWTColor.decode("#ff00ff"),
+		AWTColor.decode("#686868"),
+		AWTColor.decode("#9c3838")
+		
+	).map(toGdxColor) 
 
 	var orientation = new Quaternion()
 	var sensitivity = 0.2f
@@ -63,15 +95,140 @@ class MyGame extends ApplicationAdapter {
 	val graphs = new Array[Graph](21)
 	for (i <- 0 until 20){
 		val graph2 = graph.mirror(i)
-		val offset = graph2.midpoint.scl(.75f)
-		graph2.transform(_.add(offset))
+		val offset = graph2.midpoint.scl(cellSpacing)
+		graph2.transform(_.scl(outerCellScaling).add(offset))
 		graphs(i) = graph2
 	}
 	graphs(20) = graph
 
-	val cells = graphs.take(10).prepended(graph)
+	val cells = graphs.take(10).appended(graph)
 
-	val state = new State(cells)
+	val state = new State(cells, this)
+
+	def dumpInstanceInfo(): Unit = {
+	println("=== Instance parts ===")
+	for {
+		instance <- instances
+		node <- instance.nodes.asScala
+		part <- node.parts.asScala
+	} {
+		val meshPart = part.meshPart
+		val mesh = meshPart.mesh
+		val id = meshPart.id
+		val hasColorPacked = mesh.getVertexAttribute(Usage.ColorPacked) != null
+		val hasColorUnpacked = mesh.getVertexAttribute(Usage.ColorUnpacked) != null
+		val hasVertexColors = hasColorPacked || hasColorUnpacked
+
+		val mat = part.material
+		val diffuseAttr = Option(mat.get(com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.Diffuse))
+		val diffuseColorStr = diffuseAttr.map(_.asInstanceOf[com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute].color.toString).getOrElse("none")
+
+		println(s"part id='$id', vertices=${mesh.getNumVertices}, vertexColors=$hasVertexColors, diffuse=$diffuseColorStr")
+	}
+	println("======================")
+	}
+
+	def ensureUniqueMaterials(): Unit = {
+		for {
+			instance <- instances
+			node <- instance.nodes.asScala
+			part <- node.parts.asScala
+		} {
+			part.material = new com.badlogic.gdx.graphics.g3d.Material(part.material) // clone
+		}
+	}
+
+
+	def parseMeshID(id: String): (Int, Node) = id match {
+		case s"c${cell}m${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
+		case s"c${cell}f${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
+		case s"c${cell}e${edge}" => (cell.toInt, graphs(cell.toInt).edges(edge.toInt))
+		case s"c${cell}v${vert}" => (cell.toInt, graphs(cell.toInt).verts(vert.toInt))
+
+		case _ => throw new Exception()
+	}
+
+	def meshIDtoGrip(id: String): (Int, Set[Int]) = id match {
+		case s"c${cell}m${face}" => 
+			val color = graphs(cell.toInt).color
+			(color, Set(color))
+		case s"c${cell}f${face}" => 
+			val color = graphs(cell.toInt).color
+			(color, Set(color, graphs(cell.toInt).faces(face.toInt).oppCell))
+		case _ => 
+			val (cell, node) = parseMeshID(id)
+			val color = graphs(cell).color
+			(color, node.faces.map(f => f.oppCell).appended(color).toSet)
+	}
+
+	val materialMap = new HashMap[String, Material]
+
+	
+
+	def updateColors {
+		// for ((k,v) <- materialMap){
+		// 	val color = state.get(meshIDtoGrip(k))
+		// 	// println(color)
+		// 	val d = v.get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute]
+		// 	d.color.set(color)
+		// }
+
+		for {
+			instance <- instances
+			node <- instance.nodes.asScala
+			part <- node.parts.asScala
+			if part.meshPart.id != "lines"
+		} {
+			val mat = part.material
+			val newColor = colors(state.get(meshIDtoGrip(part.meshPart.id)))
+		
+			// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
+			val attr = mat.get(ColorAttribute.Diffuse)
+			
+			if (attr == null) {
+			// create and add a ColorAttribute (preserves any blending attribute already present)
+			mat.set(ColorAttribute.createDiffuse(newColor))
+			// println(s"Added new diffuse attribute to part '$faceId'")
+			} else {
+			// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
+			val ca = attr.asInstanceOf[ColorAttribute]
+			// println(s"Before update for '$faceId': ${ca.color}")
+			ca.color.set(newColor)
+			// println(s"After update for '$faceId': ${ca.color}")
+			}
+		}
+
+	}
+
+	def updateFaceColorByPart(faceId: String, newColor: Color): Unit = {
+		var found = false
+		for {
+			instance <- instances
+			node <- instance.nodes.asScala
+			part <- node.parts.asScala
+			// if part.meshPart.id == faceId
+		} {
+			found = true
+			val mat = part.material
+		
+			// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
+			val attr = mat.get(ColorAttribute.Diffuse)
+			if (attr == null) {
+			// create and add a ColorAttribute (preserves any blending attribute already present)
+			mat.set(ColorAttribute.createDiffuse(newColor))
+			println(s"Added new diffuse attribute to part '$faceId'")
+			} else {
+			// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
+			val ca = attr.asInstanceOf[ColorAttribute]
+			println(s"Before update for '$faceId': ${ca.color}")
+			ca.color.set(newColor)
+			println(s"After update for '$faceId': ${ca.color}")
+			}
+		}
+
+		if (!found) println(s"updateFaceColorByPart: no part found with id '$faceId'")
+	}
+
 
 
 	override def create(): Unit = {
@@ -93,7 +250,7 @@ class MyGame extends ApplicationAdapter {
 
 		// Lighting environment
 		environment = new Environment()
-		val lightIntensity = 0.8f
+		val lightIntensity = .9f
 		environment.set(new ColorAttribute(ColorAttribute.AmbientLight, lightIntensity, lightIntensity, lightIntensity, 1f))
 
 		// environment.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.3f, 0.3f, 0.3f, 1f))
@@ -104,105 +261,122 @@ class MyGame extends ApplicationAdapter {
 		// Build cube from triangles
 		val builder = new ModelBuilder()
 		builder.begin()
-		val material = new Material(
-			new BlendingAttribute(true, 1f)
-		)
-		material.set(IntAttribute.createCullFace(GL20.GL_NONE))
-		val meshPartBuilder = builder.part(
-			"triangles",
-			GL20.GL_TRIANGLES,
-			Usage.Position | Usage.Normal | Usage.ColorUnpacked,
-			material
-		)
+		// val material = new Material(
+		// 	new BlendingAttribute(true, 1f)
+		// )
+		// material.set(IntAttribute.createCullFace(GL20.GL_NONE))
+		val attrs = Usage.Position | Usage.Normal 
+		
 
 		val material2 = new Material(ColorAttribute.createDiffuse(Color.BLACK))
 
-		val meshLineBuilder = builder.part(
+		var meshLineBuilder = builder.part(
 			"lines",
 			GL20.GL_LINES,
 			Usage.Position,
 			material2
 		)
 
-		// Cube corners
-		val v000 = new Vector3(-1, -1, -1)
-		val v001 = new Vector3(-1, -1,  1)
-		val v010 = new Vector3(-1,  1, -1)
-		val v011 = new Vector3(-1,  1,  1)
-		val v100 = new Vector3( 1, -1, -1)
-		val v101 = new Vector3( 1, -1,  1)
-		val v110 = new Vector3( 1,  1, -1)
-		val v111 = new Vector3( 1,  1,  1)
-
-		// --- Each face: 2 triangles ---
-
-		// val o = new Vector3
-		// val (f1,e1,v1) = ElevenCell.firstVectors
-		// val es = ElevenCell.orbit(f1, e1, 3)
-		// val vs = ElevenCell.orbit(f1, v1, 3)
-		// // // Front (z = +1)
-		meshPartBuilder.setColor(Color.ORANGE)
-		// meshLineBuilder.setColor(Color.BLACK)
-
-		def toGdxColor(c: AWTColor): Color = {
-			new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, 1f)
-		}
-
-		val colors = Array(
-			AWTColor.decode("#ffffff"),
-			AWTColor.decode("#ff0000"),
-			AWTColor.decode("#ff9900"),
-			AWTColor.decode("#ffff00"),
-			AWTColor.decode("#00ff00"),
-			AWTColor.decode("#00ffff"),
-			AWTColor.decode("#0080ff"),
-			AWTColor.decode("#0000ff"),
-			AWTColor.decode("#9900ff"),
-			AWTColor.decode("#ff00ff"),
-			AWTColor.decode("#333333"),
-			AWTColor.decode("#000000")
-			
-		).map(toGdxColor)
+		
 		
 
 		
 
-		
-		def DrawPolygon(pts:Array[Vector3]){
+		// Draws a polygon connecting the first point to each subsequent consecutive pair with a triangle 
+		def DrawPolygon(pts:Array[Vector3], color:Color, name:String){ 
+			val mat = materialMap.get(name) match {
+				case Some(value) => value
+				case None => 
+					val m = new Material(
+					ColorAttribute.createDiffuse(color)
+					// new BlendingAttribute(true, 1f)
+				)
+				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
+				materialMap.addOne(name, m)
+				m
+			}
+			val part = builder.part(name, GL20.GL_TRIANGLES, attrs, mat)
+			// part.setColor(color)
 			val p = pts(0)
 				meshLineBuilder.line(p, pts(1))
+				meshLineBuilder.line(p, pts.last)
+
 			for(i <- 1 until pts.size-1){
-				meshPartBuilder.triangle(p, pts(i), pts(i+1))
+				part.triangle(p, pts(i), pts(i+1))
 				meshLineBuilder.line(pts(i), pts(i+1))
 			}
 			
 			
 		}
 
-		
-		for (g <- graphs){
+		// Draws a polygon connecting the midpoint to all the other points in order, then back to the first
+		def DrawPolygon2(midp:Vector3, pts:Array[Vector3], color:Color, name:String){ 
+			val mat = materialMap.get(name) match {
+				case Some(value) => value
+				case None => 
+					val m = new Material(
+					ColorAttribute.createDiffuse(color)
+				)
+				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
+				materialMap.addOne(name, m)
+				m
+			}
+			val part = builder.part(name, GL20.GL_TRIANGLES, attrs, mat)
+			// part.setColor(color)
+			for(i <- 0 until pts.size-1){
+				part.triangle(midp, pts(i), pts(i+1))
+				meshLineBuilder.line(pts(i), pts(i+1))
+			}
+			part.triangle(midp, pts.last, pts(0))
+			meshLineBuilder.line(pts.last, pts(0))
+		}
+
+
+
+		builder.end()
+		for (j <- 0 until graphs.length){
+			// if (j > 0){
+				builder.begin()
+			// }
+			meshLineBuilder = builder.part(
+				"lines",
+				GL20.GL_LINES,
+				Usage.Position,
+				material2
+			)
+			
+			val g = graphs(j)
 			val cell = g.color
 			for (f <- g.faces){
+
+				
+				DrawPolygon2(f.centerMidpt, f.centerPts, colors(cell), "c"+g.id+"m"+f.id)
+
 				val ridgeColor = colors(state.get(cell, Set(cell, f.oppCell)))
-				meshPartBuilder.setColor(ridgeColor)
-				val pts = f.ridgePts
-				meshPartBuilder.triangle(pts(0),pts(1),pts(2))
+				DrawPolygon2(f.pt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
+				
 				for (i <- 0 until 3){
 					val edgeColor = colors(state.get(cell, f.edges(i).faces.map(_.oppCell).appended(cell).toSet))
-					meshPartBuilder.setColor(edgeColor)
-					DrawPolygon(f.edgePts(i))
+					DrawPolygon(f.edgePts(i), edgeColor, "c"+g.id+"e"+f.edges(i).id)
 					val vertColor = colors(state.get(cell, f.verts(i).faces.map(_.oppCell).appended(cell).toSet))
-					meshPartBuilder.setColor(vertColor)
-					DrawPolygon(f.vertPts(i))
+					DrawPolygon(f.vertPts(i), vertColor, "c"+g.id+"v"+f.verts(i).id)
 				}
 			}
+			val model = builder.end()
+
+			instances(j) = new ModelInstance(model) 
 		}
+
+		ensureUniqueMaterials()
+
+	// state.Twist(10, cells(10).faces(0).FaceTwistFn(1))
+
+	
+
 		
 		
 
 
-		model = builder.end()
-		instance = new ModelInstance(model)
 
 		Gdx.input.setInputProcessor(new InputAdapter {
 
@@ -240,7 +414,7 @@ class MyGame extends ApplicationAdapter {
 					orientation.mulLeft(qYaw).mulLeft(qPitch)
 
 					// apply orientation to the cube
-					instance.transform.idt().rotate(orientation)
+					instances.map(_.transform.idt().rotate(orientation))
 
 					lastX = screenX
 					lastY = screenY
@@ -252,15 +426,36 @@ class MyGame extends ApplicationAdapter {
 				rotating = false
 
 				// Only pick if it was a click, not a drag
-				// if (!dragDetected) {
-				// 	val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
-				// 	pickFace(ray, instances) match {
-				// 		case Some(hit) =>
-				// 		println(s"Clicked face '${hit.faceId}' of dodecahedron at ${hit.point}")
-				// 		case None =>
-				// 		println("No hit")
-				// 	}
-				// }
+				if (!dragDetected) {
+					val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
+					pickFace(ray, instances) match {
+						case Some(hit) =>
+							val btn = button match {
+								case Buttons.LEFT => -1
+								case Buttons.RIGHT => 1
+								case _: Int => 0
+							} 
+							// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
+							val (cell, node) = parseMeshID(hit.faceId)
+							val dir =  btn * (graphs(cell).isMirrored match {
+								case true => -1
+								case false => 1
+							})
+							if (dir != 0){
+								node match {
+									case f: Face => state.Twist(graphs(cell).color, f.FaceTwistFn(dir)) 
+									case _ => 
+								}
+							}
+								
+							
+
+						case None =>
+							println("No hit")
+							dumpInstanceInfo()
+							// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
+					}
+				}
 
 				true
 			}
@@ -281,45 +476,45 @@ class MyGame extends ApplicationAdapter {
 		// camController.update()
 
 		modelBatch.begin(camera)
-		modelBatch.render(instance, environment)
+		instances.foreach(modelBatch.render(_, environment))
 		modelBatch.end()
 	}
 
 	override def dispose(): Unit = {
 		modelBatch.dispose()
-		model.dispose()
+		// model.dispose()
 	}
 
 	// def drawTriangle(meshPartBuilder:MeshPartBuilder, v1: Vector3, v2: Vector3, v3: Vector3, color:Color){
 		
 	// }
 
-	def makeCylinderBetween(p1: Vector3, p2: Vector3, radius: Float, color: Color): ModelInstance = {
-		val dir = new Vector3(p2).sub(p1)         // direction vector
-		val length = dir.len()                    // cylinder height
-		dir.nor()
+	// def makeCylinderBetween(p1: Vector3, p2: Vector3, radius: Float, color: Color): ModelInstance = {
+	// 	val dir = new Vector3(p2).sub(p1)         // direction vector
+	// 	val length = dir.len()                    // cylinder height
+	// 	dir.nor()
 
-		// Create a cylinder aligned with Y-axis
-		val modelBuilder = new ModelBuilder()
-		val material = new Material(ColorAttribute.createDiffuse(color))
-		val model: Model = modelBuilder.createCylinder(
-			radius * 2, length, radius * 2, 32,
-			material,
-			Usage.Position | Usage.Normal
-		)
-		val instance = new ModelInstance(model)
+	// 	// Create a cylinder aligned with Y-axis
+	// 	val modelBuilder = new ModelBuilder()
+	// 	val material = new Material(ColorAttribute.createDiffuse(color))
+	// 	val model: Model = modelBuilder.createCylinder(
+	// 		radius * 2, length, radius * 2, 32,
+	// 		material,
+	// 		Usage.Position | Usage.Normal
+	// 	)
+	// 	val instance = new ModelInstance(model)
 
-		// Rotation: align cylinder's local Y with dir
-		val up = Vector3.Y.cpy()
-		val q = new Quaternion().setFromCross(up, dir)
-		instance.transform.set(q)
+	// 	// Rotation: align cylinder's local Y with dir
+	// 	val up = Vector3.Y.cpy()
+	// 	val q = new Quaternion().setFromCross(up, dir)
+	// 	instance.transform.set(q)
 
-		// Move to midpoint
-		val mid = new Vector3(p1).add(p2).scl(0.5f)
-		instance.transform.setTranslation(mid)
+	// 	// Move to midpoint
+	// 	val mid = new Vector3(p1).add(p2).scl(0.5f)
+	// 	instance.transform.setTranslation(mid)
 
-		instance
-	}
+	// 	instance
+	// }
 
 	def computeNormal(v1: Vector3, v2: Vector3, v3: Vector3): Vector3 = {
 		val edge1 = v2.cpy().sub(v1)
@@ -332,7 +527,68 @@ class MyGame extends ApplicationAdapter {
 		camera.viewportHeight = height.toFloat
 		camera.update()
 	}
+
+
+	case class FaceHit(faceId: String, point: Vector3, distance: Float)
+
+
+	def pickFace(ray: Ray, instances: Array[ModelInstance]): Option[FaceHit] = {
+		var closestHit: Option[FaceHit] = None
+		var minDst = Float.MaxValue
+
+		val invTransform = new Matrix4(instances(0).transform)
+		invTransform.inv()  // invert the model transform
+
+		val localRay = new Ray(ray.origin.cpy(), ray.direction.cpy())
+		localRay.mul(invTransform)  // now the ray is in local coordinates
+
+		for {
+			instance <- instances
+			node <- instance.nodes.asScala
+			part <- node.parts.asScala if !part.meshPart.id.equals("lines")
+		} {
+			val meshPart = part.meshPart
+			val mesh = meshPart.mesh
+
+			val vertices = new Array[Float](mesh.getNumVertices * mesh.getVertexSize / 4)
+			mesh.getVertices(vertices)
+
+			val posAttr = mesh.getVertexAttribute(Usage.Position)
+			val stride = mesh.getVertexSize / 4
+			val posOffset = posAttr.offset / 4
+
+			val indices = new Array[Short](meshPart.size)
+			mesh.getIndices(meshPart.offset, meshPart.size, indices, 0)
+
+			for (i <- 0 until meshPart.size by 3) {
+			def vertex(idx: Int) = {
+				val base = idx * stride + posOffset
+				new Vector3(vertices(base), vertices(base + 1), vertices(base + 2))
+			}
+
+			val v0 = vertex(indices(i))
+			val v1 = vertex(indices(i + 1))
+			val v2 = vertex(indices(i + 2))
+
+			val intersection = new Vector3()
+			if (Intersector.intersectRayTriangle(localRay, v0, v1, v2, intersection)) {
+				val dst = localRay.origin.dst2(intersection)
+				if (dst < minDst) {
+				minDst = dst
+				closestHit = Some(FaceHit(meshPart.id, intersection.cpy(), dst))
+				}
+			}
+			}
+		}
+
+		closestHit
+	}
+
+	
+	
 }
+
+
 
 
 

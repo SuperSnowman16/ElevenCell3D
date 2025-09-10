@@ -4,6 +4,9 @@ import java.lang.Math._
 import MyGame.{stickerSize, depth}
 import Maths3D._
 import Maths3D.Hyperbolic.lerp
+import Maths3D.Hyperbolic.interpolate
+import Maths3D.Mobius.mobiusScalarMultiply
+import scala.collection.mutable.HashMap
 object Graphs {
 
 		val (p,q) = (3,5)
@@ -45,7 +48,7 @@ object Graphs {
 			((1 until n).map(x => new Vector3(vec).rotate(axis, -x*360f/n)).prepended(vec)).toArray
 		}
 
-		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:Vector3, val id:Int, val color:Int){
+		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:Vector3, val id:Int, val color:Int, val isMirrored:Boolean){
 
 			def mirror(faceID:Int) : Graph = {
 				val newFaces = new Array[Face](faces.size)
@@ -119,15 +122,18 @@ object Graphs {
 				for (i <- 0 until faces.length){
 					val f = faces(i)
 					val newF = newFaces(i)
-					newF.edgePts = f.edgePts.map(x => x.map(sphereMirror(_, sphere)))
-					newF.vertPts = f.vertPts.map(x => x.map(sphereMirror(_, sphere)))
-					newF.ridgePts = f.ridgePts.map(sphereMirror(_, sphere))
+					val mirr = sphereMirror(_, sphere)
+					newF.edgePts = f.edgePts.map(x => x.map(mirr))
+					newF.vertPts = f.vertPts.map(x => x.map(mirr))
+					newF.ridgePts = f.ridgePts.map(mirr)
+					newF.centerPts = f.centerPts.map(mirr)
+					newF.centerMidpt = mirr(f.centerMidpt)
 
 				}
 
 
 
-				new Graph(newFaces, newEdges, newVerts, sphericalInversion(midpoint, sphere).get, faceID, f0.oppCell)
+				new Graph(newFaces, newEdges, newVerts, sphericalInversion(midpoint, sphere).get, faceID, f0.oppCell, !isMirrored)
 			}
 
 			def getOpp(i:Int) : Int = (i+10)%20
@@ -137,9 +143,11 @@ object Graphs {
 				faces.foreach(n => n.pt = tf(n.pt))
 				edges.foreach(n => n.pt = tf(n.pt))
 				verts.foreach(n => n.pt = tf(n.pt))
+				faces.map(n => n.centerMidpt = tf(n.centerMidpt))
 				faces.map(_.ridgePts.map(tf))
 				faces.map(_.edgePts.map(_.map(tf)))
 				faces.map(_.vertPts.map(_.map(tf)))
+				faces.map(_.centerPts.map((tf)))
 
 
 
@@ -262,7 +270,7 @@ object Graphs {
 
 
 				
-			new Graph(faceArr, edgeArr, vertArr, new Vector3, -1, 10)
+			new Graph(faceArr, edgeArr, vertArr, new Vector3, 20, 10, false)
 		}
 
 		def connectVertex(vertex:Vertex, startFace:Face){
@@ -389,15 +397,15 @@ object Graphs {
 
 		class Face(id:Int, val p:Int, var oppCell:Int, vec:Vector3 = null) extends Node(vec, id, p){
 
-			
+			// val thisFace = this
 
 			val verts = new Array[Vertex](size)
 			val edges = new Array[Edge](size)
 			
-
-
-			var ridgePts = new Array[Vector3](size)
-			var edgePts = Array.ofDim[Vector3](size,5)
+			var centerMidpt = new Vector3
+			var centerPts = new Array[Vector3](size*2)
+			var ridgePts = new Array[Vector3](size*2)
+			var edgePts = Array.ofDim[Vector3](size,6)
 			var vertPts = Array.ofDim[Vector3](size,4)
 
 			def generateStickers {
@@ -405,40 +413,56 @@ object Graphs {
 				val edgeMidpts = Array.ofDim[Vector3](size,2)
 
 				for (i <- 0 until size){
-					ridgeMidpts(i) = lerp(verts(i).pt, pt, depth*.75f)
-					ridgePts(i) = lerp(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
-					edgeMidpts(i)(0) = lerp(verts(i).pt, edges(i).pt, depth*.5)
-					edgeMidpts(i)(1) = lerp(getVertex(i+1).pt, edges(i).pt, depth*.5)
+					ridgeMidpts(i) = interpolate(verts(i).pt, pt, depth*.75f)
+					ridgePts(2*i) = interpolate(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
+					edgeMidpts(i)(0) = interpolate(verts(i).pt, edges(i).pt, depth*.5)
+					edgeMidpts(i)(1) = interpolate(getVertex(i+1).pt, edges(i).pt, depth*.5)
 				}
 
 				for (i <- 0 until size){
+					ridgePts(2*i+1) = interpolate(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
 					val (e,v) = (edges(i).pt, verts(i).pt)
 					vertPts(i)(0) = v
-					vertPts(i)(1) = lerp(v, edgeMidpts(i)(0), stickerSize)
-					vertPts(i)(2) = lerp(v, ridgeMidpts(i), stickerSize)
-					vertPts(i)(3) = lerp(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
-
-					// edgePts(i)(0) = e
-					// edgePts(i)(1) = lerp(e, edgeMidpts(i)(1), stickerSize)
-					// edgePts(i)(2) = lerp(e, ridgeMidpts((i+1)%size), stickerSize)
-					// edgePts(i)(3) = lerp(e, ridgeMidpts(i), stickerSize)
-					// edgePts(i)(4) = lerp(e, edgeMidpts(i)(0), stickerSize)
-
+					vertPts(i)(1) = interpolate(v, edgeMidpts(i)(0), stickerSize)
+					vertPts(i)(2) = interpolate(v, ridgeMidpts(i), stickerSize)
+					vertPts(i)(3) = interpolate(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
 				}
 
 				for (i <- 0 until size){
 					val (e,v, v2) = (edges(i).pt, verts(i).pt, verts((i+1)%size).pt)
 
 					edgePts(i)(0) = e
-					edgePts(i)(1) = lerp(v2, edgeMidpts(i)(1), 1/stickerSize)
-					edgePts(i)(2) = lerp(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(3) = lerp(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(4) = lerp(v, edgeMidpts(i)(0), 1/stickerSize)
+					edgePts(i)(1) = interpolate(v2, edgeMidpts(i)(1), 1/stickerSize)
+					edgePts(i)(2) = interpolate(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
+					edgePts(i)(4) = interpolate(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
+					edgePts(i)(5) = interpolate(v, edgeMidpts(i)(0), 1/stickerSize)
+
+					edgePts(i)(3) = interpolate(edgePts(i)(2), edgePts(i)(4))
 
 				}
 
+				val (midpt, pts) = getPolygon
+				val f = mobiusScalarMultiply(.9f, _)
+				centerMidpt = f(midpt)
+				centerPts = pts.map(f)
 
 
+
+			}
+
+			def FaceTwistFn(dir:Int) : (Int => Int) = {
+
+				val map = new HashMap[Int,Int]
+				for (i <- 0 until 3){
+					for (j <- 1 to 3){
+						map.addOne(getVertex(i).getOffsetFace(this, j).oppCell, getVertex(i+dir).getOffsetFace(this, j).oppCell)
+					}
+				}
+				return x => map.get(x) match {
+					case None => x
+					case Some(value) => value
+				}
+				
 			}
 			
 			
