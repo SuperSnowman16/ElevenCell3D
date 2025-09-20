@@ -1,12 +1,13 @@
 import com.badlogic.gdx.math.Vector3
 import scala.collection.mutable.ListBuffer
 import java.lang.Math._
-import MyGame.{stickerSize, depth}
+import Main.{stickerSize, cutDepth}
 import Maths3D._
 import Maths3D.Hyperbolic.lerp
 import Maths3D.Hyperbolic.interpolate
 import Maths3D.Mobius.mobiusScalarMultiply
 import scala.collection.mutable.HashMap
+import Main.cellSize
 object Graphs {
 
 		val (p,q) = (3,5)
@@ -48,7 +49,7 @@ object Graphs {
 			((1 until n).map(x => new Vector3(vec).rotate(axis, -x*360f/n)).prepended(vec)).toArray
 		}
 
-		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:Vector3, val id:Int, val color:Int, val isMirrored:Boolean){
+		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:Vector3, var id:Int, val color:Int, val isMirrored:Boolean){
 
 			def mirror(faceID:Int) : Graph = {
 				val newFaces = new Array[Face](faces.size)
@@ -141,17 +142,17 @@ object Graphs {
 
 
 			def transform(tf: Vector3 => Vector3) {
-				faces.foreach(n => n.pt = tf(n.pt))
+				for (face <- faces){
+					face.pt = tf(face.pt)
+					face.ridgePts = face.ridgePts.map(tf)
+					face.edgePts = face.edgePts.map(_.map(tf))
+					face.vertPts = face.vertPts.map(_.map(tf))
+					face.centerPts = face.centerPts.map((tf))
+					face.centerMidpt = tf(face.centerMidpt)
+				}
+				
 				edges.foreach(n => n.pt = tf(n.pt))
 				verts.foreach(n => n.pt = tf(n.pt))
-				faces.map(n => n.centerMidpt = tf(n.centerMidpt))
-				faces.map(_.ridgePts.map(tf))
-				faces.map(_.edgePts.map(_.map(tf)))
-				faces.map(_.vertPts.map(_.map(tf)))
-				faces.map(_.centerPts.map((tf)))
-
-
-
 				midpoint = tf(midpoint)
 
 			}
@@ -254,10 +255,10 @@ object Graphs {
 					}
 					// println("vertex")
 				}
-				println("loop")
+				// println("loop")
 
 			}
-			println("done")
+			// println("done")
 
 			val edgeArr = edgeList.toArray
 			for (i <- 0 until edgeArr.length){
@@ -417,16 +418,16 @@ object Graphs {
 				val edgeMidpts = Array.ofDim[Vector3](size,2)
 
 				for (i <- 0 until size){
-					ridgeMidpts(i) = interpolate(verts(i).pt, pt, depth*.75f)
+					ridgeMidpts(i) = interpolate(verts(i).pt, pt, cutDepth*.75f)
 					ridgePts(2*i) = interpolate(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
-					edgeMidpts(i)(0) = interpolate(verts(i).pt, edges(i).pt, depth*.5)
-					edgeMidpts(i)(1) = interpolate(getVertex(i+1).pt, edges(i).pt, depth*.5)
+					edgeMidpts(i)(0) = interpolate(verts(i).pt, edges(i).pt, cutDepth*.5)
+					edgeMidpts(i)(1) = interpolate(getVertex(i+1).pt, edges(i).pt, cutDepth*.5)
 				}
 
 				for (i <- 0 until size){
 					ridgePts(2*i+1) = interpolate(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
 					val (e,v) = (edges(i).pt, verts(i).pt)
-					vertPts(i)(0) = v
+					vertPts(i)(0) = v.cpy()
 					vertPts(i)(1) = interpolate(v, edgeMidpts(i)(0), stickerSize)
 					vertPts(i)(2) = interpolate(v, ridgeMidpts(i), stickerSize)
 					vertPts(i)(3) = interpolate(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
@@ -435,7 +436,7 @@ object Graphs {
 				for (i <- 0 until size){
 					val (e,v, v2) = (edges(i).pt, verts(i).pt, verts((i+1)%size).pt)
 
-					edgePts(i)(0) = e
+					edgePts(i)(0) = e.cpy()
 					edgePts(i)(1) = interpolate(v2, edgeMidpts(i)(1), 1/stickerSize)
 					edgePts(i)(2) = interpolate(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
 					edgePts(i)(4) = interpolate(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
@@ -446,7 +447,7 @@ object Graphs {
 				}
 
 				val (midpt, pts) = getPolygon
-				val f = mobiusScalarMultiply(.9f, _)
+				val f = mobiusScalarMultiply(stickerSize, _)
 				centerMidpt = f(midpt)
 				centerPts = pts.map(f)
 
@@ -635,6 +636,6 @@ object Graphs {
 		)
 
 		val icosaNbrs = hemiIcosaNbrs ++ hemiIcosaNbrs.map(_.map(x => (x+10)%20).reverse)
-		println(icosaNbrs.map(_.mkString(",")).mkString("\n"))
+		// println(icosaNbrs.map(_.mkString(",")).mkString("\n"))
 
 }

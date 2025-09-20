@@ -2,7 +2,7 @@ import scala.collection.mutable.HashMap
 
 import Graphs.Graph
 import scala.util.Random
-class State(cells:Array[Graph], main:MyGame) {
+class State(cells:Array[Graph], main:Main) {
 
     val stateMap = new HashMap[(Int, Set[Int]), Int]
 
@@ -26,12 +26,13 @@ class State(cells:Array[Graph], main:MyGame) {
                 stateMap.addOne((color, vert.faces.map(f => f.oppCell).appended(color).toSet), color)
             }
         }
+        // main.updateColors
 
-        println(stateMap.mkString("\n"))
+        // println(stateMap.mkString("\n"))
     }
 
     def Twist(cell:Int, gripFn:Int=>Int){
-        println("twisted cell:" + cell)
+        // println("twisted cell:" + cell)
         val affectedPieces = stateMap.toArray.filter(kv => kv._1._2.contains(cell))
         for ((piece, color) <- affectedPieces){
             var oldCell = piece._1
@@ -44,7 +45,7 @@ class State(cells:Array[Graph], main:MyGame) {
             
             stateMap.addOne((newCell,newGrip),color)
         }
-        main.updateColors
+        // main.updateColors
     }
 
     def Rotate(gripFn:Int=>Int){

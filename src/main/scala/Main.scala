@@ -26,7 +26,7 @@ import Maths3D._
 import com.badlogic.gdx.graphics.g3d.attributes.BlendingAttribute
 import com.badlogic.gdx.math.Vector2
 import Maths3D.Hyperbolic.interpolate
-import MyGame._
+import Main._
 import Maths3D.Hyperbolic.lerp
 import Graphs.Graph
 import com.badlogic.gdx.math.collision.Ray
@@ -39,35 +39,37 @@ import scala.collection.mutable.HashMap
 import com.badlogic.gdx.Input.Buttons
 import com.badlogic.gdx.graphics.g3d.attributes.DepthTestAttribute
 import com.badlogic.gdx.Input.Keys
+import scala.util.Random
+import Maths3D.Mobius.mobiusScalarMultiply
 
 
-object MyGame {
+object Main {
 
 	val stickerSize = .8f
-	val depth = .7f
-	val cellSpacing = 1f
-	val outerCellScaling = 1f
+	val cutDepth = .7f
+	val cellSize = .6f
+	// val outerCellScaling = 1f
 	
 	def main(args: Array[String]): Unit = {
 		val config = new Lwjgl3ApplicationConfiguration()
 		config.setTitle("11 Cell")
 		config.setWindowedMode(800, 600)
 		config.setBackBufferConfig(8, 8, 8, 8, 16, 0, 4)
-		new Lwjgl3Application(new MyGame(), config)
+		new Lwjgl3Application(new Main(), config)
 	}
 }
 
-class MyGame extends ApplicationAdapter {
+class Main extends ApplicationAdapter {
 	private var modelBatch: ModelBatch = _
 	private var environment: Environment = _
 	private var camera: PerspectiveCamera = _
 	private var camController: CameraInputController = _
 
 	private var model: Model = _
-	private var instances = new Array[ModelInstance](21)
+	private var instances = Array[ModelInstance]()
 
 	def toGdxColor(c: AWTColor): Color = {
-		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, 1f)
+		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, .8f)
 	}
 
 	val colors = Array(
@@ -82,7 +84,7 @@ class MyGame extends ApplicationAdapter {
 		AWTColor.decode("#9900ff"),
 		AWTColor.decode("#ff00ff"),
 		AWTColor.decode("#686868"),
-		AWTColor.decode("#9c3838")
+		AWTColor.decode("#000000")
 		
 	).map(toGdxColor) 
 
@@ -93,15 +95,42 @@ class MyGame extends ApplicationAdapter {
 	var rotating = false
 
 	val graph = Graphs.GenerateGraph
+	// graph.transform(mobiusScalarMultiply(0.8f, _))
+	// graph.transform(_.scl(0.8f))
+	
 	val faceArr = graph.faces
-	val graphs = new Array[Graph](21)
+	var graphs = new Array[Graph](21)
 	for (i <- 0 until 20){
 		val graph2 = graph.mirror(i)
-		val offset = graph2.midpoint.scl(cellSpacing)
-		graph2.transform(_.scl(outerCellScaling).add(offset))
+		// val offset = graph2.midpoint.scl(cellSpacing)
+		// graph2.transform(_.scl(outerCellScaling).add(offset))
 		graphs(i) = graph2
 	}
 	graphs(20) = graph
+
+	val layer3 = new Array[Graph](60)
+
+	for (i <- 0 until 20){
+		val g = graphs(i)
+		for (j <- 0 until 3){
+			val f0 = g.faces(i)
+			val f1 = f0.getFace(j)
+			val f2 = f1.getOffsetFace(f0, 1)
+			// val f3 = f2.getOffsetFace(f1, -1)
+			layer3(3*i + j) = g.mirror(f2.id)
+		}
+	}
+
+	// graphs = graphs ++ layer3
+
+	graphs.foreach(g => g.transform(x => interpolate(g.midpoint, x, cellSize)))
+	
+	for(i <- 0 until graphs.length){
+		graphs(i).id = i
+	}
+
+	instances = new Array[ModelInstance](graphs.length)
+
 
 	val cells = graphs.take(10).appended(graph)
 
@@ -128,6 +157,21 @@ class MyGame extends ApplicationAdapter {
 		println(s"part id='$id', vertices=${mesh.getNumVertices}, vertexColors=$hasVertexColors, diffuse=$diffuseColorStr")
 	}
 	println("======================")
+	}
+
+	def randomMove {
+		val cellID = Random.nextInt(11)
+		val cell = cells(cellID)
+		val twistType = Random.nextInt(3)
+		val pieces = twistType match {
+			case 0 => cell.faces
+			case 1 => cell.edges
+			case 2 => cell.verts
+		}
+		val piece = pieces(Random.nextInt(pieces.size))
+		
+		state.Twist(cellID, piece.TwistFn(1))
+
 	}
 
 	// def ensureUniqueMaterials(): Unit = {
@@ -264,7 +308,7 @@ class MyGame extends ApplicationAdapter {
 
 		// Set up camera
 		camera = new PerspectiveCamera(67, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
-		camera.position.set(0f, 0f, 3f) 
+		camera.position.set(0f, 0f, 2f) 
 		camera.lookAt(0f, 0f, 0f)
 		camera.near = 0.1f
 		camera.far = 100f
@@ -428,6 +472,14 @@ class MyGame extends ApplicationAdapter {
 				true
 			}
 
+			override def scrolled(amountX: Float, amountY: Float): Boolean = {
+				camera.position.add(0f, 0f, amountY*.1f)
+				if (camera.position.z < 0f){
+					camera.position.set(0,0,0)
+				} 
+				return true
+			}
+
 
 			override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
 				if (rotating) {
@@ -475,6 +527,7 @@ class MyGame extends ApplicationAdapter {
 
 										instances.map(_.transform.idt().rotate(orientation))
 									}
+									updateColors
 									
 
 									0
@@ -489,23 +542,54 @@ class MyGame extends ApplicationAdapter {
 							if (dir != 0){
 								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
 									state.Rotate(node.TwistFn(dir)) 
+									
 										
 									
 								}else{
 									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
 								}
+								updateColors
 								
 							}
 								
 							
 
 						case None =>
-							println("No hit")
-							dumpInstanceInfo()
+							// println("No hit")
+							// dumpInstanceInfo()
 							// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
 					}
 				}
 
+				true
+			}
+
+			override def keyDown(keycode : Int): Boolean = {
+
+				if (keycode >= Keys.F1 && keycode <= Keys.F12) {
+					val n = keycode - Keys.F1 + 1
+					n match {
+						case x if x <= 5 => 
+							for (i <- 0 until x){
+								randomMove
+							}
+							updateColors
+
+						case x if x == 6 => 
+							for (i <- 0 until 1000){
+								randomMove
+							}
+							updateColors
+
+						case x if x == 12 => 
+							state.ResetState
+							updateColors
+							
+						
+						case _ => ()
+					}
+					
+				}
 				true
 			}
 

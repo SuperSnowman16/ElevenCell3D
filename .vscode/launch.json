@@ -8,7 +8,7 @@
             "type": "scala",
             "request": "launch",
             "name": "Untitled",
-            "mainClass": "MyGame",
+            "mainClass": "Main",
             "args": [],
             "jvmOptions": [],
             "env": {}
