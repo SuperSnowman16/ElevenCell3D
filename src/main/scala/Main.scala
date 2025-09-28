@@ -25,9 +25,7 @@ import scala.collection.mutable.ListBuffer
 import Maths3D._
 import com.badlogic.gdx.graphics.g3d.attributes.BlendingAttribute
 import com.badlogic.gdx.math.Vector2
-import Maths3D.Hyperbolic.interpolate
 import Main._
-import Maths3D.Hyperbolic.lerp
 import Graphs.Graph
 import com.badlogic.gdx.math.collision.Ray
 import scala.jdk.CollectionConverters._
@@ -41,6 +39,8 @@ import com.badlogic.gdx.graphics.g3d.attributes.DepthTestAttribute
 import com.badlogic.gdx.Input.Keys
 import scala.util.Random
 import Maths3D.Mobius.mobiusScalarMultiply
+import com.badlogic.gdx.graphics.glutils.HdpiMode
+import com.badlogic.gdx.utils.viewport.FitViewport
 
 
 object Main {
@@ -54,6 +54,9 @@ object Main {
 		val config = new Lwjgl3ApplicationConfiguration()
 		config.setTitle("11 Cell")
 		config.setWindowedMode(800, 600)
+	
+		config.setResizable(true)
+		config.setHdpiMode(HdpiMode.Pixels)
 		config.setBackBufferConfig(8, 8, 8, 8, 16, 0, 4)
 		new Lwjgl3Application(new Main(), config)
 	}
@@ -65,6 +68,8 @@ class Main extends ApplicationAdapter {
 	private var camera: PerspectiveCamera = _
 	private var camController: CameraInputController = _
 
+	var viewport : FitViewport = _
+
 	private var model: Model = _
 	private var instances = Array[ModelInstance]()
 
@@ -72,6 +77,9 @@ class Main extends ApplicationAdapter {
 		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, .8f)
 	}
 
+
+
+	
 	val colors = Array(
 		AWTColor.decode("#ffffff"),
 		AWTColor.decode("#ff0000"),
@@ -93,6 +101,7 @@ class Main extends ApplicationAdapter {
 	var lastX = 0
 	var lastY = 0
 	var rotating = false
+	var show3rdLayer = true
 
 	val graph = Graphs.GenerateGraph
 	// graph.transform(mobiusScalarMultiply(0.8f, _))
@@ -121,9 +130,13 @@ class Main extends ApplicationAdapter {
 		}
 	}
 
-	// graphs = graphs ++ layer3
+	graphs = graphs ++ layer3
 
 	graphs.foreach(g => g.transform(x => interpolate(g.midpoint, x, cellSize)))
+
+	// val f = rotateAroundLine(_, graphs(0).midpoint, graphs(0).faces(1).centerMidpt, 120)
+	// graphs.foreach(g => g.transform(translateToOrigin(_, new Vector3(.5f,0,0))))
+	// graphs.foreach(g => g.transform(f))
 	
 	for(i <- 0 until graphs.length){
 		graphs(i).id = i
@@ -252,8 +265,9 @@ class Main extends ApplicationAdapter {
 			part <- node.parts.asScala
 			if part.meshPart.id != "lines"
 		} {
+			val id = part.meshPart.id
 			val mat = part.material
-			val newColor = colors(state.get(meshIDtoGrip(part.meshPart.id)))
+			val newColor = colors(state.get(meshIDtoGrip(id)))
 		
 			// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
 			val attr = mat.get(ColorAttribute.Diffuse)
@@ -273,34 +287,34 @@ class Main extends ApplicationAdapter {
 
 	}
 
-	def updateFaceColorByPart(faceId: String, newColor: Color): Unit = {
-		var found = false
-		for {
-			instance <- instances
-			node <- instance.nodes.asScala
-			part <- node.parts.asScala
-			// if part.meshPart.id == faceId
-		} {
-			found = true
-			val mat = part.material
+	// def updateFaceColorByPart(faceId: String, newColor: Color): Unit = {
+	// 	var found = false
+	// 	for {
+	// 		instance <- instances
+	// 		node <- instance.nodes.asScala
+	// 		part <- node.parts.asScala
+	// 		// if part.meshPart.id == faceId
+	// 	} {
+	// 		found = true
+	// 		val mat = part.material
 		
-			// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
-			val attr = mat.get(ColorAttribute.Diffuse)
-			if (attr == null) {
-			// create and add a ColorAttribute (preserves any blending attribute already present)
-			mat.set(ColorAttribute.createDiffuse(newColor))
-			println(s"Added new diffuse attribute to part '$faceId'")
-			} else {
-			// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
-			val ca = attr.asInstanceOf[ColorAttribute]
-			println(s"Before update for '$faceId': ${ca.color}")
-			ca.color.set(newColor)
-			println(s"After update for '$faceId': ${ca.color}")
-			}
-		}
+	// 		// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
+	// 		val attr = mat.get(ColorAttribute.Diffuse)
+	// 		if (attr == null) {
+	// 		// create and add a ColorAttribute (preserves any blending attribute already present)
+	// 		mat.set(ColorAttribute.createDiffuse(newColor))
+	// 		println(s"Added new diffuse attribute to part '$faceId'")
+	// 		} else {
+	// 		// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
+	// 		val ca = attr.asInstanceOf[ColorAttribute]
+	// 		println(s"Before update for '$faceId': ${ca.color}")
+	// 		ca.color.set(newColor)
+	// 		println(s"After update for '$faceId': ${ca.color}")
+	// 		}
+	// 	}
 
-		if (!found) println(s"updateFaceColorByPart: no part found with id '$faceId'")
-	}
+	// 	if (!found) println(s"updateFaceColorByPart: no part found with id '$faceId'")
+	// }
 
 
 
@@ -313,6 +327,9 @@ class Main extends ApplicationAdapter {
 		camera.near = 0.1f
 		camera.far = 100f
 		camera.update()
+
+		// viewport = new FitViewport(800,600,camera)
+		// viewport.apply()
 
 		// camController = new CameraInputController(camera)
 		// camController.rotateAngle = -360
@@ -519,7 +536,7 @@ class Main extends ApplicationAdapter {
 								case Buttons.RIGHT => 1
 								case Buttons.MIDDLE =>
 									val (cell, _) = parseMeshID(hit.faceId)
-									if (cell != 20){
+									if (cell < 20){
 										state.Rotate(CenterCell(cell))
 										val axis = graphs(cell).midpoint
 										val rot = new Quaternion(axis, 180f)
@@ -539,6 +556,8 @@ class Main extends ApplicationAdapter {
 								case true => -1
 								case false => 1
 							})
+							
+
 							if (dir != 0){
 								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
 									state.Rotate(node.TwistFn(dir)) 
@@ -590,6 +609,9 @@ class Main extends ApplicationAdapter {
 					}
 					
 				}
+				if (keycode == Keys.TAB){
+					show3rdLayer = !show3rdLayer
+				}
 				true
 			}
 
@@ -605,12 +627,20 @@ class Main extends ApplicationAdapter {
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT)
 
 		camera.update()
+		// viewport.apply()
+		
 
 		// camController.target.set(0f, 0f, 0f)
 		// camController.update()
 
 		modelBatch.begin(camera)
-		instances.foreach(modelBatch.render(_, environment))
+		val cellNum = show3rdLayer match {
+			case false => 21
+			case true => 81
+		}
+		for (i <- 0 until cellNum){
+			modelBatch.render(instances(i), environment)
+		}
 		modelBatch.end()
 	}
 
@@ -657,9 +687,13 @@ class Main extends ApplicationAdapter {
 	}
 
 	override def resize(width: Int, height: Int): Unit = {
-		camera.viewportWidth = width.toFloat
-		camera.viewportHeight = height.toFloat
+		val framebufferWidth  = com.badlogic.gdx.Gdx.graphics.getWidth
+		val framebufferHeight = com.badlogic.gdx.Gdx.graphics.getHeight
+
+		camera.viewportWidth  = framebufferWidth.toFloat
+		camera.viewportHeight = framebufferHeight.toFloat
 		camera.update()
+		// viewport.update(width, height, true)
 	}
 
 
@@ -675,9 +709,12 @@ class Main extends ApplicationAdapter {
 
 		val localRay = new Ray(ray.origin.cpy(), ray.direction.cpy())
 		localRay.mul(invTransform)  // now the ray is in local coordinates
-
+		val tempInstances = show3rdLayer match {
+			case true => instances
+			case false => instances.take(21)
+		}
 		for {
-			instance <- instances
+			instance <- tempInstances
 			node <- instance.nodes.asScala
 			part <- node.parts.asScala if !part.meshPart.id.equals("lines")
 		} {

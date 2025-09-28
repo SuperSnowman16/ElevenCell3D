@@ -8,11 +8,11 @@
             "type": "scala",
             "request": "launch",
             "name": "Untitled",
-            "mainClass": "Main",
+            "mainClass": "Launcher",
             "args": [],
             "jvmOptions": [],
             "env": {}
         }
 
-    ]
+    ]   
 }

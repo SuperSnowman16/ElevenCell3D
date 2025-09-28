@@ -1,6 +1,6 @@
 import sbtassembly.AssemblyPlugin.autoImport._
 
-ThisBuild / scalaVersion := "2.13.16" // or whatever version you're using
+ThisBuild / scalaVersion := "2.13.16" 
 
 
 libraryDependencies ++= Seq(
@@ -13,9 +13,15 @@ lazy val root = (project in file("."))
   .settings(
     name := "ElevenCell3D",
     version := "0.1.0",
-    assembly / mainClass := Some("Main"), // replace with your main class
+    assembly / mainClass := Some("Launcher"), 
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+      case "module-info.class"           => MergeStrategy.discard
+
+      // Keep all native files
+      case x if x.endsWith(".dll") || x.endsWith(".so") || x.endsWith(".dylib") =>
+        MergeStrategy.first
+
       case _ => MergeStrategy.first
     }
   )

@@ -1,5 +1,6 @@
 import com.badlogic.gdx.math.Vector3
 import java.lang.Math._
+import Maths3D.Mobius._
 object Maths3D {
 	case class Sphere(center: Vector3, radius: Float){
 		def inv(pt:Vector3) : Vector3 = sphericalInversion(pt, this).get
@@ -126,8 +127,11 @@ object Maths3D {
 		def mobiusInverse(u: Vector3): Vector3 = u.cpy().scl(-1f)
 		}
 
+		def translateToOrigin(u: Vector3, p: Vector3): Vector3 = {
+			mobiusAdd(mobiusInverse(p), u)
+		}
+
 		// Hyperbolic interpolation along geodesic
-		object Hyperbolic {
 
 		/**
 			* Returns a point along the hyperbolic geodesic from u to v.
@@ -145,6 +149,25 @@ object Maths3D {
 		def lerp(u:Vector3, v:Vector3, t:Double = 0.5) : Vector3 = {
 			u.cpy.lerp(v, t.toFloat)
 		}
-	}
+
+		def rotateAroundLine(u: Vector3, a: Vector3, b: Vector3, angleDeg: Float): Vector3 = {
+			// Step 1: pick a point on the axis (say 'a')
+			val transToOrigin = Mobius.mobiusInverse(a)
+
+			// Translate point u so axis passes through origin
+			val uTranslated = Mobius.mobiusAdd(transToOrigin, u)
+			val bTranslated = Mobius.mobiusAdd(transToOrigin, b)
+
+			// Step 2: find rotation axis (Euclidean axis through origin in translated coords)
+			val axis = bTranslated.cpy().nor()
+
+			// Rotate uTranslated in Euclidean sense
+			val rotated = uTranslated.cpy().rotate(axis, angleDeg)
+
+			// Step 3: translate back
+			val result = Mobius.mobiusAdd(a, rotated)
+			result
+		}
+	
 
 }

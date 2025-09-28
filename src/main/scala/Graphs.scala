@@ -3,8 +3,6 @@ import scala.collection.mutable.ListBuffer
 import java.lang.Math._
 import Main.{stickerSize, cutDepth}
 import Maths3D._
-import Maths3D.Hyperbolic.lerp
-import Maths3D.Hyperbolic.interpolate
 import Maths3D.Mobius.mobiusScalarMultiply
 import scala.collection.mutable.HashMap
 import Main.cellSize
