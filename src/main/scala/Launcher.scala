@@ -3,6 +3,8 @@ import scala.jdk.CollectionConverters._
 
 object Launcher {
   def main(args: Array[String]): Unit = {
+
+    println("".split(",").toList)
     val osName = System.getProperty("os.name").toLowerCase
     val inputArgs = ManagementFactory.getRuntimeMXBean.getInputArguments.toString
 

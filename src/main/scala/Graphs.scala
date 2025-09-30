@@ -6,6 +6,7 @@ import Maths3D._
 import Maths3D.Mobius.mobiusScalarMultiply
 import scala.collection.mutable.HashMap
 import Main.cellSize
+import Main.centerSize
 object Graphs {
 
 		val (p,q) = (3,5)
@@ -342,6 +343,8 @@ object Graphs {
 
 			val faces = new Array[Face](size)
 
+			override def toString(): String = "n"+id
+
 			
 			def setFace(id:Int, nb:Face) : Boolean = {
 				val index = mod(id, size)
@@ -445,7 +448,7 @@ object Graphs {
 				}
 
 				val (midpt, pts) = getPolygon
-				val f = mobiusScalarMultiply(stickerSize, _)
+				val f = mobiusScalarMultiply(centerSize, _)
 				centerMidpt = f(midpt)
 				centerPts = pts.map(f)
 
@@ -467,6 +470,8 @@ object Graphs {
 				}
 				
 			}
+
+			override def toString(): String = "f"+id
 			
 			
 
@@ -580,7 +585,7 @@ object Graphs {
 
 			
 
-		class Edge(id:Int = -1, vec:Vector3 = null) extends Node(vec, id, 2){
+		class Edge(i:Int = -1, vec:Vector3 = null) extends Node(vec, i, 2){
 			override def TwistFn(dir:Int) : (Int => Int) = {
 
 				val map = new HashMap[Int,Int]
@@ -598,9 +603,11 @@ object Graphs {
 				}
 				
 			}
+
+			override def toString(): String = "e"+id
 		}
 
-		class Vertex(id:Int = -1, val q:Int, vec:Vector3 = null) extends Node(vec, id, q){
+		class Vertex(i:Int = -1, val q:Int, vec:Vector3 = null) extends Node(vec, i, q){
 			override def TwistFn(dir:Int) : (Int => Int) = {
 
 				val map = new HashMap[Int,Int]
@@ -617,6 +624,8 @@ object Graphs {
 				}
 				
 			}
+
+			override def toString(): String = "v"+id
 		}
 
 

@@ -41,6 +41,7 @@ import scala.util.Random
 import Maths3D.Mobius.mobiusScalarMultiply
 import com.badlogic.gdx.graphics.glutils.HdpiMode
 import com.badlogic.gdx.utils.viewport.FitViewport
+import javax.swing.JOptionPane
 
 
 object Main {
@@ -48,6 +49,7 @@ object Main {
 	val stickerSize = .8f
 	val cutDepth = .7f
 	val cellSize = .6f
+	val centerSize = .5f
 	// val outerCellScaling = 1f
 	
 	def main(args: Array[String]): Unit = {
@@ -182,8 +184,12 @@ class Main extends ApplicationAdapter {
 			case 2 => cell.verts
 		}
 		val piece = pieces(Random.nextInt(pieces.size))
+
+		val twistStr = "1t"+cellID+piece.toString()
+
+
 		
-		state.Twist(cellID, piece.TwistFn(1))
+		state.Twist(cellID, piece.TwistFn(1), twistStr, true)
 
 	}
 
@@ -537,7 +543,7 @@ class Main extends ApplicationAdapter {
 								case Buttons.MIDDLE =>
 									val (cell, _) = parseMeshID(hit.faceId)
 									if (cell < 20){
-										state.Rotate(CenterCell(cell))
+										state.Rotate(CenterCell(cell), "c"+cell)
 										val axis = graphs(cell).midpoint
 										val rot = new Quaternion(axis, 180f)
 										orientation = orientation.mul(rot)
@@ -560,12 +566,12 @@ class Main extends ApplicationAdapter {
 
 							if (dir != 0){
 								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
-									state.Rotate(node.TwistFn(dir)) 
+									state.Rotate(node.TwistFn(dir), dir+"r"+cell+node.toString()) 
 									
 										
 									
 								}else{
-									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
+									state.Twist(graphs(cell).color, node.TwistFn(dir), dir+"t"+cell+node.toString()) 
 								}
 								updateColors
 								
@@ -588,21 +594,38 @@ class Main extends ApplicationAdapter {
 				if (keycode >= Keys.F1 && keycode <= Keys.F12) {
 					val n = keycode - Keys.F1 + 1
 					n match {
-						case x if x <= 5 => 
-							for (i <- 0 until x){
-								randomMove
-							}
-							updateColors
+						case x if x <= 6 => 
+							Gdx.app.postRunnable(new Runnable {
+								override def run(): Unit = {
 
-						case x if x == 6 => 
-							for (i <- 0 until 1000){
-								randomMove
-							}
-							updateColors
+									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
+									if (confirm == JOptionPane.YES_OPTION){
+										state.ResetState
 
-						case x if x == 12 => 
-							state.ResetState
-							updateColors
+										if (x == 6){
+											for (i <- 0 until 1000){
+												randomMove
+											}
+										}else{
+											for (i <- 0 until x){
+												randomMove
+											}
+										}
+										updateColors
+									}
+									}
+							})
+
+						case 12 => 
+							val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
+							if (confirm == JOptionPane.YES_OPTION){
+								state.ResetState
+								updateColors
+							}
+
+
+						// case 8 => 
+						// 	println(state.moveList)
 							
 						
 						case _ => ()
@@ -611,6 +634,13 @@ class Main extends ApplicationAdapter {
 				}
 				if (keycode == Keys.TAB){
 					show3rdLayer = !show3rdLayer
+				}
+				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+					keycode match {
+						case Keys.S => state.runFileChooser(true)
+						case Keys.O => state.runFileChooser(false)
+						case _ => ()
+					}
 				}
 				true
 			}
