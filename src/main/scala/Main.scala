@@ -189,7 +189,8 @@ class Main extends ApplicationAdapter {
 
 
 		
-		state.Twist(cellID, piece.TwistFn(1), twistStr, true)
+		state.Twist(cellID, piece.TwistFn(1), twistStr)
+		state.scrambleList.addOne(twistStr)
 
 	}
 
@@ -566,12 +567,16 @@ class Main extends ApplicationAdapter {
 
 							if (dir != 0){
 								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
-									state.Rotate(node.TwistFn(dir), dir+"r"+cell+node.toString()) 
+									val rotStr = dir+"r"+cell+node
+									state.Rotate(node.TwistFn(dir), rotStr)
+									state.moveList.addOne(rotStr)
 									
 										
 									
 								}else{
-									state.Twist(graphs(cell).color, node.TwistFn(dir), dir+"t"+cell+node.toString()) 
+									val rotStr = dir+"t"+cell+node.toString()
+									state.Twist(graphs(cell).color, node.TwistFn(dir), rotStr) 
+									state.moveList.addOne(rotStr)
 								}
 								updateColors
 								
@@ -639,6 +644,12 @@ class Main extends ApplicationAdapter {
 					keycode match {
 						case Keys.S => state.runFileChooser(true)
 						case Keys.O => state.runFileChooser(false)
+						case Keys.Z =>
+							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT)){
+								state.RedoMove
+							}else{
+								state.UndoMove
+							}
 						case _ => ()
 					}
 				}

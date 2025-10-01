@@ -7,6 +7,7 @@ import com.badlogic.gdx.Gdx
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
 import java.io.File
+import scala.collection.mutable.Stack
 
 class State(cells:Array[Graph], main:Main) {
 
@@ -16,6 +17,8 @@ class State(cells:Array[Graph], main:Main) {
     val scrambleList = new ListBuffer[String]
 
     val moveList = new ListBuffer[String]
+
+    val undoStack = new Stack[String]
 
     ResetState
     // Randomise
@@ -47,7 +50,9 @@ class State(cells:Array[Graph], main:Main) {
 
     
 
-    def Twist(cell:Int, gripFn:Int=>Int, twistStr:String, isScramble:Boolean = false){
+    
+
+    def Twist(cell:Int, gripFn:Int=>Int, twistStr:String){
         // println("twisted cell:" + cell)
         val affectedPieces = stateMap.toArray.filter(kv => kv._1._2.contains(cell))
         for ((piece, color) <- affectedPieces){
@@ -61,11 +66,7 @@ class State(cells:Array[Graph], main:Main) {
             
             stateMap.addOne((newCell,newGrip),color)
         }
-        if (isScramble){
-            scrambleList.addOne(twistStr)
-        }else{
-            moveList.addOne(twistStr)
-        }
+        
         // main.updateColors
     }
 
@@ -83,7 +84,7 @@ class State(cells:Array[Graph], main:Main) {
             
             stateMap.addOne((newCell,newGrip),color)
         }
-        moveList.addOne(rotStr)
+        
         main.updateColors
     }
 
@@ -107,9 +108,9 @@ class State(cells:Array[Graph], main:Main) {
             Gdx.app.postRunnable(new Runnable {
                 override def run(): Unit = {
                 if (saveMode) {
-                    saveGame(file.getAbsolutePath)
+                    saveState(file.getAbsolutePath)
                 } else {
-                    loadGame(file.getAbsolutePath)
+                    loadState(file.getAbsolutePath)
                 }
                 }
             })
@@ -117,15 +118,11 @@ class State(cells:Array[Graph], main:Main) {
         })
     }
 
-    def StrToMove(s:String, isScramble:Boolean = false) {
-        val graphs = main.graphs
+    def StrToMove(s:String) {
         s match {
             case s"${dir}t${twist}" => 
                 val (cell, node) = main.parseMeshID("c"+twist)
-                println(cell, node)
-                println(graphs(cell).color)
-                println(dir.toInt)
-                Twist(graphs(cell).color, node.TwistFn(dir.toInt), s, isScramble)
+                Twist(main.graphs(cell).color, node.TwistFn(dir.toInt), s)
 
             case s"${dir}r${rotation}" => 
                 val (cell, node) = main.parseMeshID("c"+rotation)
@@ -142,16 +139,37 @@ class State(cells:Array[Graph], main:Main) {
         
     } 
 
+    def StrUndo(s:String){
+        undoStack.addOne(s)
+        s match {
+            case s"${dir}t${twist}" => 
+                val (cell, node) = main.parseMeshID("c"+twist)
+                Twist(main.graphs(cell).color, node.TwistFn(-dir.toInt), s)
+
+            case s"${dir}r${rotation}" => 
+                val (cell, node) = main.parseMeshID("c"+rotation)
+                Rotate(node.TwistFn(-dir.toInt), s)
+
+            case s"c${centerCell}" => 
+                Rotate(main.CenterCell(centerCell.toInt), s)
+
+            case _ => 
+                println("invalid string ("+s+")")
+                throw new Exception()
+        }
+    }
+    
+
     
 
 
-    def saveGame(path: String): Unit = {
+    def saveState(path: String): Unit = {
         val handle = Gdx.files.absolute(path)
         handle.writeString(scrambleList.mkString(",")+";"+moveList.mkString(","), false)
         println(s"Saved to $path")
     }
 
-    def loadGame(path: String): Unit = {
+    def loadState(path: String): Unit = {
         val handle = Gdx.files.absolute(path)
         if (handle.exists()) {
             try {
@@ -162,12 +180,14 @@ class State(cells:Array[Graph], main:Main) {
                         // println(moves)
                         if (scramble.nonEmpty){
                             for (move <- scramble.split(",")){
-                                StrToMove(move, true)
+                                StrToMove(move) 
+                                scrambleList.addOne(move) 
                             }
                         }
                         if (moves.nonEmpty){
                             for (move <- moves.split(",")){
                                 StrToMove(move)
+                                moveList.addOne(move)
                             }
                         }
                         
@@ -192,6 +212,29 @@ class State(cells:Array[Graph], main:Main) {
             
             // println("Loaded")
         }
+    }
+
+    def UndoMove {
+        moveList.lastOption match {
+            case None => return
+            case Some(str) => 
+                moveList.dropRightInPlace(1)
+                StrUndo(str) 
+                main.updateColors   
+        }
+        println(moveList)
+        println(undoStack)
+    }
+
+    def RedoMove {
+        if (undoStack.nonEmpty){
+            val str = undoStack.pop()
+            StrToMove(str)
+            moveList.addOne(str)
+            main.updateColors
+        }
+        println(moveList)
+        println(undoStack)
     }
 
 
