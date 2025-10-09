@@ -640,16 +640,20 @@ class Main extends ApplicationAdapter {
 				if (keycode == Keys.TAB){
 					show3rdLayer = !show3rdLayer
 				}
-				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)
+					|| Gdx.input.isKeyPressed(Keys.CONTROL_RIGHT)
+					|| Gdx.input.isKeyPressed(Keys.SYM)){
 					keycode match {
 						case Keys.S => state.runFileChooser(true)
 						case Keys.O => state.runFileChooser(false)
 						case Keys.Z =>
-							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT)){
+							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT) 
+								|| Gdx.input.isKeyPressed(Keys.SHIFT_RIGHT)){
 								state.RedoMove
 							}else{
 								state.UndoMove
 							}
+						case Keys.Y => state.RedoMove
 						case _ => ()
 					}
 				}

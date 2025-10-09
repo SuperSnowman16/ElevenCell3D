@@ -11,7 +11,7 @@ object Graphs {
 
 		val (p,q) = (3,5)
 
-
+		
 		def tanharcosh(x:Double) : Float = (sqrt(x-1)/sqrt(x+1)).toFloat
 
 		def radii353 : (Float,Float,Float) = {
