@@ -52,7 +52,7 @@ class State(cells:Array[Graph], main:Main) {
 
     
 
-    def Twist(cell:Int, gripFn:Int=>Int, twistStr:String){
+    def Twist(cell:Int, gripFn:Int=>Int){
         // println("twisted cell:" + cell)
         val affectedPieces = stateMap.toArray.filter(kv => kv._1._2.contains(cell))
         for ((piece, color) <- affectedPieces){
@@ -66,11 +66,12 @@ class State(cells:Array[Graph], main:Main) {
             
             stateMap.addOne((newCell,newGrip),color)
         }
+        undoStack.clear()
         
         // main.updateColors
     }
 
-    def Rotate(gripFn:Int=>Int, rotStr:String){
+    def Rotate(gripFn:Int=>Int){
         // println("twisted cell:" + cell)
         val affectedPieces = stateMap.toArray
         for ((piece, color) <- affectedPieces){
@@ -97,24 +98,34 @@ class State(cells:Array[Graph], main:Main) {
     def get(key:(Int, Set[Int])) : Int = stateMap.get(key).getOrElse(11)
 
     def runFileChooser(saveMode: Boolean): Unit = {
-        SwingUtilities.invokeLater(() => {
-            val cwd = new java.io.File(System.getProperty("user.dir"))
-            val chooser = new JFileChooser(cwd)
-            val result = if (saveMode) chooser.showSaveDialog(null)
-                else chooser.showOpenDialog(null)
+        SwingUtilities.invokeLater(new Runnable {
+            override def run(): Unit = {
+                val cwd = new java.io.File(System.getProperty("user.dir"))
+                val chooser = new JFileChooser(cwd)
+                val result = if (saveMode) chooser.showSaveDialog(null)
+                    else chooser.showOpenDialog(null)
 
-            if (result == JFileChooser.APPROVE_OPTION) {
-            val file: File = chooser.getSelectedFile
-            Gdx.app.postRunnable(new Runnable {
-                override def run(): Unit = {
-                if (saveMode) {
-                    saveState(file.getAbsolutePath)
-                } else {
-                    loadState(file.getAbsolutePath)
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    val file: File = chooser.getSelectedFile
+                    
+                    if (saveMode) { 
+                        Gdx.app.postRunnable(new Runnable {
+                            override def run(): Unit = {
+                                saveState(file.getAbsolutePath)
+                            }
+                        })
+                    } else {
+                        Gdx.app.postRunnable(new Runnable {
+                            override def run(): Unit = {
+                                loadState(file.getAbsolutePath)
+                            }
+                        })
+                    }
+                    
                 }
-                }
-            })
             }
+            
+            
         })
     }
 
@@ -122,14 +133,14 @@ class State(cells:Array[Graph], main:Main) {
         s match {
             case s"${dir}t${twist}" => 
                 val (cell, node) = main.parseMeshID("c"+twist)
-                Twist(main.graphs(cell).color, node.TwistFn(dir.toInt), s)
+                Twist(main.graphs(cell).color, node.TwistFn(dir.toInt))
 
             case s"${dir}r${rotation}" => 
                 val (cell, node) = main.parseMeshID("c"+rotation)
-                Rotate(node.TwistFn(dir.toInt), s)
+                Rotate(node.TwistFn(dir.toInt))
 
             case s"c${centerCell}" => 
-                Rotate(main.CenterCell(centerCell.toInt), s)
+                Rotate(main.CenterCell(centerCell.toInt))
 
             case _ => 
                 println("invalid string ("+s+")")
@@ -140,18 +151,18 @@ class State(cells:Array[Graph], main:Main) {
     } 
 
     def StrUndo(s:String){
-        undoStack.addOne(s)
+        undoStack.push(s)
         s match {
             case s"${dir}t${twist}" => 
                 val (cell, node) = main.parseMeshID("c"+twist)
-                Twist(main.graphs(cell).color, node.TwistFn(-dir.toInt), s)
+                Twist(main.graphs(cell).color, node.TwistFn(-dir.toInt))
 
             case s"${dir}r${rotation}" => 
                 val (cell, node) = main.parseMeshID("c"+rotation)
-                Rotate(node.TwistFn(-dir.toInt), s)
+                Rotate(node.TwistFn(-dir.toInt))
 
             case s"c${centerCell}" => 
-                Rotate(main.CenterCell(centerCell.toInt), s)
+                Rotate(main.CenterCell(centerCell.toInt))
 
             case _ => 
                 println("invalid string ("+s+")")
@@ -170,6 +181,7 @@ class State(cells:Array[Graph], main:Main) {
     }
 
     def loadState(path: String): Unit = {
+        
         val handle = Gdx.files.absolute(path)
         if (handle.exists()) {
             try {
@@ -196,7 +208,11 @@ class State(cells:Array[Graph], main:Main) {
                         new Exception("invalid file loaded")
                 }
 
-                main.updateColors
+                Gdx.app.postRunnable(new Runnable {
+                    override def run(): Unit = {
+                        main.updateColors
+                    }
+                })
 
                 
 
@@ -222,8 +238,9 @@ class State(cells:Array[Graph], main:Main) {
                 StrUndo(str) 
                 main.updateColors   
         }
-        println(moveList)
-        println(undoStack)
+        // println("undo:")
+        // println(moveList)
+        // println(undoStack)
     }
 
     def RedoMove {
@@ -233,8 +250,9 @@ class State(cells:Array[Graph], main:Main) {
             moveList.addOne(str)
             main.updateColors
         }
-        println(moveList)
-        println(undoStack)
+        // println("redo:")
+        // println(moveList)
+        // println(undoStack)
     }
 
 

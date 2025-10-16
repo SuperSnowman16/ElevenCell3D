@@ -42,6 +42,7 @@ import Maths3D.Mobius.mobiusScalarMultiply
 import com.badlogic.gdx.graphics.glutils.HdpiMode
 import com.badlogic.gdx.utils.viewport.FitViewport
 import javax.swing.JOptionPane
+import javax.swing.SwingUtilities
 
 
 object Main {
@@ -50,6 +51,7 @@ object Main {
 	val cutDepth = .7f
 	val cellSize = .6f
 	val centerSize = .5f
+	val transparency = .8f
 	// val outerCellScaling = 1f
 	
 	def main(args: Array[String]): Unit = {
@@ -76,7 +78,7 @@ class Main extends ApplicationAdapter {
 	private var instances = Array[ModelInstance]()
 
 	def toGdxColor(c: AWTColor): Color = {
-		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, .8f)
+		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, transparency)
 	}
 
 
@@ -85,7 +87,7 @@ class Main extends ApplicationAdapter {
 	val colors = Array(
 		AWTColor.decode("#ffffff"),
 		AWTColor.decode("#ff0000"),
-		AWTColor.decode("#ff9900"),
+		AWTColor.decode("#ff7b00"),
 		AWTColor.decode("#ffff00"),
 		AWTColor.decode("#00ff00"),
 		AWTColor.decode("#00ffff"),
@@ -171,12 +173,16 @@ class Main extends ApplicationAdapter {
 
 		println(s"part id='$id', vertices=${mesh.getNumVertices}, vertexColors=$hasVertexColors, diffuse=$diffuseColorStr")
 	}
-	println("======================")
+	println("=====================")
 	}
 
 	def randomMove {
-		val cellID = Random.nextInt(11)
-		val cell = cells(cellID)
+		val color = Random.nextInt(11)
+		val cell = cells(color)
+		var graphID = color
+		if (color == 10){
+			graphID = 20
+		}
 		val twistType = Random.nextInt(3)
 		val pieces = twistType match {
 			case 0 => cell.faces
@@ -185,11 +191,11 @@ class Main extends ApplicationAdapter {
 		}
 		val piece = pieces(Random.nextInt(pieces.size))
 
-		val twistStr = "1t"+cellID+piece.toString()
+		val twistStr = "1t"+graphID+piece.toString()
 
 
 		
-		state.Twist(cellID, piece.TwistFn(1), twistStr)
+		state.Twist(color, piece.TwistFn(1))
 		state.scrambleList.addOne(twistStr)
 
 	}
@@ -544,7 +550,9 @@ class Main extends ApplicationAdapter {
 								case Buttons.MIDDLE =>
 									val (cell, _) = parseMeshID(hit.faceId)
 									if (cell < 20){
-										state.Rotate(CenterCell(cell), "c"+cell)
+										val rotStr =  "c"+cell
+										state.Rotate(CenterCell(cell))
+										state.moveList.addOne(rotStr)
 										val axis = graphs(cell).midpoint
 										val rot = new Quaternion(axis, 180f)
 										orientation = orientation.mul(rot)
@@ -568,14 +576,14 @@ class Main extends ApplicationAdapter {
 							if (dir != 0){
 								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
 									val rotStr = dir+"r"+cell+node
-									state.Rotate(node.TwistFn(dir), rotStr)
+									state.Rotate(node.TwistFn(dir))
 									state.moveList.addOne(rotStr)
 									
 										
 									
 								}else{
 									val rotStr = dir+"t"+cell+node.toString()
-									state.Twist(graphs(cell).color, node.TwistFn(dir), rotStr) 
+									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
 									state.moveList.addOne(rotStr)
 								}
 								updateColors
@@ -600,7 +608,9 @@ class Main extends ApplicationAdapter {
 					val n = keycode - Keys.F1 + 1
 					n match {
 						case x if x <= 6 => 
-							Gdx.app.postRunnable(new Runnable {
+
+
+							SwingUtilities.invokeLater(new Runnable {
 								override def run(): Unit = {
 
 									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
@@ -616,17 +626,32 @@ class Main extends ApplicationAdapter {
 												randomMove
 											}
 										}
-										updateColors
 									}
-									}
+									Gdx.app.postRunnable(new Runnable {
+										override def run(): Unit = {
+											updateColors
+										}
+									})
+									
+								}
 							})
 
 						case 12 => 
-							val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
-							if (confirm == JOptionPane.YES_OPTION){
-								state.ResetState
-								updateColors
-							}
+							SwingUtilities.invokeLater(new Runnable {
+								override def run(): Unit = {
+									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
+									if (confirm == JOptionPane.YES_OPTION){
+										state.ResetState
+										
+									
+									}
+									Gdx.app.postRunnable(new Runnable {
+										override def run(): Unit = {
+											updateColors
+										}
+									})
+								}
+							})
 
 
 						// case 8 => 
