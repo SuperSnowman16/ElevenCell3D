@@ -66,7 +66,7 @@ class State(cells:Array[Graph], main:Main) {
             
             stateMap.addOne((newCell,newGrip),color)
         }
-        undoStack.clear()
+        // undoStack.clear()
         
         // main.updateColors
     }

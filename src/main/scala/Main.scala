@@ -578,6 +578,7 @@ class Main extends ApplicationAdapter {
 									val rotStr = dir+"r"+cell+node
 									state.Rotate(node.TwistFn(dir))
 									state.moveList.addOne(rotStr)
+									state.undoStack.clear()
 									
 										
 									
@@ -585,6 +586,7 @@ class Main extends ApplicationAdapter {
 									val rotStr = dir+"t"+cell+node.toString()
 									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
 									state.moveList.addOne(rotStr)
+									state.undoStack.clear()
 								}
 								updateColors
 								
