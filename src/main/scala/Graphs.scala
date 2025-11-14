@@ -5,37 +5,45 @@ import Main.{stickerSize, cutDepth}
 import Maths3D._
 import Maths3D.Mobius.mobiusScalarMultiply
 import scala.collection.mutable.HashMap
+import scala.collection.mutable.HashSet
+
 import Main.cellSize
 import Main.centerSize
+import Permutations.Permutation
 object Graphs {
 
-		val (p,q) = (3,5)
+		val (p,q) = (5,3)
 
 		
-		def tanharcosh(x:Double) : Float = (sqrt(x-1)/sqrt(x+1)).toFloat
+		def coshToReal(x:Double) : Float = (sqrt(x-1)/sqrt(x+1)).toFloat
 
-		def radii353 : (Float,Float,Float) = {
-			val f = tanharcosh((sqrt(15)+sqrt(3))/4)
-			val e = tanharcosh((3+sqrt(5))/(2*sqrt(3)))
-			val r3 = atanh(sqrt(16*sqrt(5) - 35))
+		def radii535 : (Float,Float,Float) = {
+			val cosB = sqrt((5 + 2*sqrt(5))/15)
+			val r1 = acosh(sqrt(5+2*sqrt(5))/2)
+			val f = coshToReal(sqrt(5+2*sqrt(5))/2)
+			val e = coshToReal(sqrt(5/2 + 11/(2*sqrt(5))))
+			// val r3 = atanh(3*sqrt((8*sqrt(5)-15)*(19-4*sqrt(15)))/11)
+			val r3 = atanh(tanh(r1)/cosB)
 			val v = tanh(r3/2).toFloat
 
 			(f,e,v)
 		}
 
 		def firstVectors : (Vector3, Vector3, Vector3) = {
-				val (f,e,v) = radii353
+				val (f,e,v) = radii535
 				val r1 = new Vector3(f, 0, 0)
 
-				val sinA = sqrt((3-sqrt(5))/6).toFloat
-				val cosA = sqrt((3+sqrt(5))/6).toFloat
+				val sinA = sqrt((5 - sqrt(5))/10).toFloat
+				val cosA = sqrt((5 + sqrt(5))/10).toFloat
+
+				// println("trig" + (sinA*sinA+cosA*cosA))
 
 				val r2 = new Vector3(e*cosA, e*sinA, 0)
 
 				val sinB = sqrt(2*(5 - sqrt(5))/15).toFloat
 				val cosB = sqrt((5 + 2*sqrt(5))/15).toFloat
 
-				val r3 = new Vector3(v*cosB,v*sinB,0).rotate(new Vector3(1,0,0), 60)
+				val r3 = new Vector3(v*cosB,v*sinB,0).rotate(new Vector3(1,0,0), 36)
 
 
 				(r1,r2,r3)
@@ -57,11 +65,12 @@ object Graphs {
 
 				val f0 = faces(faceID)
 				val vs = f0.verts.map(v => v.pt)
+				val mirrorPerm = f0.faceMirror
 				val sphere = circumsphere(f0.pt, vs(0), vs(1), vs(2)).get
 
 				for (i <- 0 until faces.length){
 					val f = faces(i)
-					val newF = new Face(f.id, f.p, f.oppCell, sphereMirror(f.pt, sphere))
+					val newF = new Face(f.id, f.p, mirrorPerm(f.oppCell), sphereMirror(f.pt, sphere))
 					newFaces(i) = newF
 				}
 				for (i <- 0 until edges.length){
@@ -90,6 +99,7 @@ object Graphs {
 						newF.edges(j) = newEdges(f.edges(j).id)
 						newF.verts(j) = newVerts(f.verts(j).id)
 					}
+					newF.twistPerm = mirrorPerm * f.twistPerm * mirrorPerm
 				}
 
 				for (i <- 0 until edges.length){
@@ -98,6 +108,7 @@ object Graphs {
 					for (j <- 0 until e.size){
 						newE.faces(j) = newFaces(e.faces(j).id)
 					}
+					newE.twistPerm = mirrorPerm * e.twistPerm * mirrorPerm
 				}
 
 				for (i <- 0 until verts.length){
@@ -106,19 +117,20 @@ object Graphs {
 					for (j <- 0 until v.q){
 						newV.faces(j) = newFaces(v.faces(j).id)
 					}
+					newV.twistPerm = mirrorPerm * v.twistPerm * mirrorPerm
 				}
 
 				val newF0 = newFaces(faceID)
-				for (v <- newFaces(faceID).verts){
-					val f1 = v.getOffsetFace(newF0, 2)
-					val f2 = v.getOffsetFace(newF0, -2)
-					val temp = f1.oppCell
-					f1.oppCell = f2.oppCell
-					f2.oppCell = temp 
-					newFaces(getOpp(f1.id)).oppCell = f1.oppCell
-					newFaces(getOpp(f2.id)).oppCell = f2.oppCell
+				// for (v <- newFaces(faceID).verts){
+				// 	val f1 = v.getOffsetFace(newF0, 2)
+				// 	val f2 = v.getOffsetFace(newF0, -2)
+				// 	// val temp = f1.oppCell
+				// 	// f1.oppCell = f2.oppCell
+				// 	// f2.oppCell = temp 
+				// 	newFaces(getOpp(f1.id)).oppCell = f1.oppCell
+				// 	newFaces(getOpp(f2.id)).oppCell = f2.oppCell
 
-				}
+				// }
 
 				for (i <- 0 until faces.length){
 					val f = faces(i)
@@ -130,14 +142,16 @@ object Graphs {
 					newF.centerPts = f.centerPts.map(mirr)
 					newF.centerMidpt = mirr(f.centerMidpt)
 
+					newF.faceMirror = f0.faceMirror * f.faceMirror * f0.faceMirror
+
 				}
 
 
 
-				new Graph(newFaces, newEdges, newVerts, sphericalInversion(midpoint, sphere).get, faceID, f0.oppCell, !isMirrored)
+				new Graph(newFaces, newEdges, newVerts, sphericalInversion(midpoint, sphere).get, faceID, f0.faceMirror(color), !isMirrored)
 			}
 
-			def getOpp(i:Int) : Int = (i+10)%20
+			def getOpp(i:Int) : Int = (i+6)%12
 
 
 			def transform(tf: Vector3 => Vector3) {
@@ -169,27 +183,40 @@ object Graphs {
 
 
 			val (f1, e1, v1) = firstVectors
-			val es = orbit(f1, e1, 3)
-			val vs = orbit(f1, v1, 3)
-			val faceArr : Array[Face] = new Array(20)
-			val edgeList : ListBuffer[Edge] = new ListBuffer()
-			val vertList : ListBuffer[Vertex] = new ListBuffer()
+			val es = orbit(f1, e1, 5)
+			val vs = orbit(f1, v1, 5)
+			val faceArr  = new Array[Face](12)
+			val edgeList = new ListBuffer[Edge]()
+			val vertList = new ListBuffer[Vertex]()
+
+			// permutations for rotating clockwise around a face / edge / vertex
+
 
 			val face0 = new Face(0, p, 0)
+			face0.faceMirror = Permutations.m4
+
+			val facePerm0 = Permutations.f0
+			
+			face0.twistPerm = facePerm0
+
+			// println(facePerms(0).fixedPts)
+
+
+
 			face0.pt = f1
 			faceArr(0) = face0
-			for (i <- 1 until 20){
-				faceArr(i) = new Face(i, p, i%10)
+			for (i <- 1 until 12){
+				faceArr(i) = new Face(i, p, -1)
 			}
 			
 
-			for (i <- 0 until 20){
-				for (j <- 0 until 3){
-					faceArr(i).faces(j) = faceArr(icosaNbrs(i)(j))
+			for (i <- 0 until 12){
+				for (j <- 0 until 5){
+					faceArr(i).faces(j) = faceArr(dodecaNbrs(i)(j))
 				}
 			}
 
-			for (i <- 0 until 3){
+			for (i <- 0 until 5){
 				val newV = new Vertex(i, q)
 				newV.pt = vs(i)
 				newV.setFace(0, face0)
@@ -202,16 +229,32 @@ object Graphs {
 				newE.setFace(0, face0)
 				face0.setEdge(i, newE)
 				edgeList += newE
-				val oppFace = faceArr(icosaNbrs(0)(i))
+				val oppFace = faceArr(dodecaNbrs(0)(i))
 				newE.setFace(1, oppFace)
 				oppFace.setEdge(0, newE)
 				oppFace.setFace(0, face0)
 				oppFace.pt = new Vector3(face0.pt).rotate(newE.pt, 180)
 				
+				val rotPerm = facePerm0^i 
+				val edgePerm = rotPerm * Permutations.e0 * rotPerm.inv
+				newE.twistPerm = edgePerm
+				newV.twistPerm = rotPerm * Permutations.v0 * rotPerm.inv
+				oppFace.faceMirror = edgePerm * face0.faceMirror * edgePerm
+				oppFace.twistPerm = edgePerm * face0.twistPerm * edgePerm 
+
+				// println(edgePerm(19))
+
+				// println(facePerms(dodecaNbrs(0)(i)).fixedPts)
+
+			}
+			
+			for (i <- 0 until 6){
+				faceArr(i+6).faceMirror = faceArr(i).faceMirror
+				faceArr(i+6).twistPerm = faceArr(i).twistPerm.inv
 			}
 
-			for (i <- 0 until 20){
-				for (j <- 0 until 3){
+			for (i <- 0 until 12){
+				for (j <- 0 until 5){
 					if (faceArr(i).getVertex(j) == null){
 						val fi = faceArr(i)
 						val newV = new Vertex(i, q)
@@ -227,7 +270,7 @@ object Graphs {
 			var done = false
 			while (!done){
 				done = true
-				for (i <- 1 until 20){
+				for (i <- 1 until 12){
 					val face = faceArr(i)
 					val vScore = face.vertexScore._1
 					if (vScore < p){
@@ -268,11 +311,17 @@ object Graphs {
 				vertArr(i).id = i
 			}
 
-			faceArr.foreach(_.generateStickers)
+			for (i <- 0 until faceArr.length){
+				faceArr(i).oppCell = faceArr(i).faceMirror(0)
+				faceArr(i).generateStickers
+			}
+
+
+			
 
 
 				
-			new Graph(faceArr, edgeArr, vertArr, new Vector3, 20, 10, false)
+			new Graph(faceArr, edgeArr, vertArr, new Vector3, 0, 0, false)
 		}
 
 		def connectVertex(vertex:Vertex, startFace:Face){
@@ -290,31 +339,40 @@ object Graphs {
 		}
 
 		def orbitVertex(startFace:Face){
-			val firstV = startFace.vertexScore._2
-			val pt0 = startFace.getVertex(firstV).pt
+			val vID = startFace.vertexScore._2
+			val v0 = startFace.getVertex(vID)
+			val perm0 = v0.twistPerm
+			val pt0 = v0.pt
 			var offset = 1
 			while (startFace.vertexScore._1 < p){
-				val nextV = startFace.getVertex(firstV + offset)
+				val offsetPerm = startFace.twistPerm^offset
+				val nextV = startFace.getVertex(vID + offset)
 				if (nextV.pt == null){
-					nextV.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
+					nextV.pt = new Vector3(pt0).rotate(startFace.pt, -offset*72)
+					nextV.twistPerm = offsetPerm * perm0 * offsetPerm.inv
 				}
 				offset += 1
 			}
 		}
 
 		def orbitEdge(startFace:Face, edgeList:ListBuffer[Edge]){
-			val firstE = startFace.edgeScore._2
-			val pt0 = startFace.getEdge(firstE).pt
+			val eID = startFace.edgeScore._2
+			val e0 = startFace.getEdge(eID)
+			val perm0 = e0.twistPerm
+			val pt0 = e0.pt
 			var offset = 1
 			while (startFace.edgeScore._1 < p){
-				val id = firstE + offset
+				val offsetPerm = startFace.twistPerm^offset
+				val id = eID + offset
 				val nextE = startFace.getEdge(id)
 				if (nextE == null){
+					val offsetPerm = startFace.twistPerm^offset
 					val newE = new Edge
 					newE.setFace(0, startFace)
 					newE.setFace(1, startFace.getFace(id))
 					edgeList += newE
-					newE.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
+					newE.twistPerm = offsetPerm * perm0 * offsetPerm.inv
+					newE.pt = new Vector3(pt0).rotate(startFace.pt, -offset*72)
 					startFace.setEdge(id, newE)
 					val nbFace = startFace.getFace(id)
 					nbFace.setEdge(nbFace.findFace(startFace), newE)
@@ -325,12 +383,14 @@ object Graphs {
 
 		def orbitFace(startFace:Face){
 			val firstF = startFace.faceScore._2
-			val pt0 = startFace.getFace(firstF).pt
+			val f0 = startFace.getFace(firstF)
+			val perm0 = f0.twistPerm
+			val pt0 = f0.pt
 			var offset = 1
 			while (startFace.faceScore._1 < p){
 				val nextF = startFace.getFace(firstF + offset)
 				if (nextF.pt == null){
-					nextF.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
+					nextF.pt = new Vector3(pt0).rotate(startFace.pt, -offset*72)
 				}
 				offset += 1
 			}
@@ -393,7 +453,11 @@ object Graphs {
 				return (count, firstScore)
 			}
 
-			def TwistFn(dir:Int) : Int => Int = (x => x)
+			var twistPerm = Permutations.Identity
+
+			def TwistFn(dir:Int) : Int => Int = ((twistPerm^dir)(_))
+
+			def getGrips(grip:Int) : Set[Int] = Set(grip)
 
 
 			
@@ -413,6 +477,8 @@ object Graphs {
 			var ridgePts = new Array[Vector3](size*2)
 			var edgePts = Array.ofDim[Vector3](size,6)
 			var vertPts = Array.ofDim[Vector3](size,4)
+
+			var faceMirror = Permutations.Identity
 
 			def generateStickers {
 				val ridgeMidpts = new Array[Vector3](size)
@@ -456,20 +522,20 @@ object Graphs {
 
 			}
 
-			override def TwistFn(dir:Int) : (Int => Int) = {
+			// override def TwistFn(dir:Int) : (Int => Int) = {
 
-				val map = new HashMap[Int,Int]
-				for (i <- 0 until 3){
-					for (j <- 1 to 3){
-						map.addOne(getVertex(i).getOffsetFace(this, j).oppCell, getVertex(i+dir).getOffsetFace(this, j).oppCell)
-					}
-				}
-				return x => map.get(x) match {
-					case None => x
-					case Some(value) => value
-				}
+			// 	val map = new HashMap[Int,Int]
+			// 	for (i <- 0 until 3){
+			// 		for (j <- 1 to 3){
+			// 			map.addOne(getVertex(i).getOffsetFace(this, j).oppCell, getVertex(i+dir).getOffsetFace(this, j).oppCell)
+			// 		}
+			// 	}
+			// 	return x => map.get(x) match {
+			// 		case None => x
+			// 		case Some(value) => value
+			// 	}
 				
-			}
+			// }
 
 			override def toString(): String = "f"+id
 			
@@ -580,69 +646,94 @@ object Graphs {
 				return (pt, arr)
 			}
 
+			override def getGrips(grip: Int): Set[Int] = Set(grip, oppCell)
+
 
 		}
 
 			
 
 		class Edge(i:Int = -1, vec:Vector3 = null) extends Node(vec, i, 2){
-			override def TwistFn(dir:Int) : (Int => Int) = {
+			// override def TwistFn(dir:Int) : (Int => Int) = {
 
-				val map = new HashMap[Int,Int]
-				val (f0, f1) = (getFace(0), getFace(dir))
-				val (v0, v1) = (f0.getVertex(f0.findEdge(this)), f1.getVertex(f1.findEdge(this)))
-				val (i0, i1) = (v0.findFace(f0), v1.findFace(f1))
-				for (j <- 0 until 4){
-					val (c0, c1) = (v0.getFace(i0+j).oppCell, v1.getFace(i1+j).oppCell)
-					map.addOne(c0,c1)
-					map.addOne(c1,c0)
-				}
-				return x => map.get(x) match {
-					case None => x
-					case Some(value) => value
-				}
+			// 	val map = new HashMap[Int,Int]
+			// 	val (f0, f1) = (getFace(0), getFace(dir))
+			// 	val (v0, v1) = (f0.getVertex(f0.findEdge(this)), f1.getVertex(f1.findEdge(this)))
+			// 	val (i0, i1) = (v0.findFace(f0), v1.findFace(f1))
+			// 	for (j <- 0 until 4){
+			// 		val (c0, c1) = (v0.getFace(i0+j).oppCell, v1.getFace(i1+j).oppCell)
+			// 		map.addOne(c0,c1)
+			// 		map.addOne(c1,c0)
+			// 	}
+			// 	return x => map.get(x) match {
+			// 		case None => x
+			// 		case Some(value) => value
+			// 	}
 				
-			}
+			// }
+
+			override def getGrips(grip:Int) : Set[Int] = {
+				val set = HashSet(grip)
+				for (f <- faces){
+					set.addOne(f.oppCell)
+					set.addOne((f.faceMirror * twistPerm * f.faceMirror)(grip))
+				}
+				if (set.size != 5){
+					println("grip error" + set.size)
+				}
+				return set.toSet
+			} 
 
 			override def toString(): String = "e"+id
 		}
 
 		class Vertex(i:Int = -1, val q:Int, vec:Vector3 = null) extends Node(vec, i, q){
-			override def TwistFn(dir:Int) : (Int => Int) = {
+			// override def TwistFn(dir:Int) : (Int => Int) = {
 
-				val map = new HashMap[Int,Int]
-				for (i <- 0 until 5){
-					val (f1, f2) = (getFace(i), getFace(i+dir))
-					val (i1, i2) = (f1.findVertex(this), f2.findVertex(this))
-					map.addOne(f1.oppCell, f2.oppCell)
-					map.addOne(f1.getFace(i1+1).oppCell, f2.getFace(i2+1).oppCell)
+			// 	val map = new HashMap[Int,Int]
+			// 	for (i <- 0 until 5){
+			// 		val (f1, f2) = (getFace(i), getFace(i+dir))
+			// 		val (i1, i2) = (f1.findVertex(this), f2.findVertex(this))
+			// 		map.addOne(f1.oppCell, f2.oppCell)
+			// 		map.addOne(f1.getFace(i1+1).oppCell, f2.getFace(i2+1).oppCell)
 
-				}
-				return x => map.get(x) match {
-					case None => x
-					case Some(value) => value
-				}
+			// 	}
+			// 	return x => map.get(x) match {
+			// 		case None => x
+			// 		case Some(value) => value
+			// 	}
 				
+			// }
+
+			override def getGrips(grip:Int) : Set[Int] = {
+				val set = HashSet(grip)
+				for (f <- faces){
+					set.addOne(f.oppCell)
+					set.addOne((f.faceMirror * twistPerm * f.faceMirror)(grip))
+					set.addOne((f.faceMirror * twistPerm.inv * f.faceMirror)(grip))
+
+				}
+				if (set.size != 10){
+					println("grip error" + set.size)
+				}
+				return set.toSet
 			}
 
 			override def toString(): String = "v"+id
 		}
 
 
-		val hemiIcosaNbrs = Array(
-			Array(1,4,7),
-			Array(0,9,2),
-			Array(1,16,3),
-			Array(2,18,4),
-			Array(0,3,5),
-			Array(4,19,6),
-			Array(5,12,7),
-			Array(0,6,8),
-			Array(7,13,9),
-			Array(1,8,15)
+		val hemiDodecaNbrs = Array(
+			Array(1,2,3,4,5),
+			Array(0,5,9,10,2),
+			Array(0,1,10,11,3),
+			Array(0,2,11,7,4),
+			Array(0,3,7,8,5),
+			Array(0,4,8,9,1)
+			
 		)
 
-		val icosaNbrs = hemiIcosaNbrs ++ hemiIcosaNbrs.map(_.map(x => (x+10)%20).reverse)
+		val dodecaNbrs = hemiDodecaNbrs ++ hemiDodecaNbrs.map(_.map(x => (x+6)%12).reverse)
 		// println(icosaNbrs.map(_.mkString(",")).mkString("\n"))
 
 }

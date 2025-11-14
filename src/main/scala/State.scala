@@ -36,10 +36,10 @@ class State(cells:Array[Graph], main:Main) {
                 stateMap.addOne((color, Set(color, face.oppCell)), color)
             }
             for (edge <- cell.edges){
-                stateMap.addOne((color, edge.faces.map(f => f.oppCell).appended(color).toSet), color)
+                stateMap.addOne((color, edge.getGrips(color)), color)
             }
             for (vert <- cell.verts){
-                stateMap.addOne((color, vert.faces.map(f => f.oppCell).appended(color).toSet), color)
+                stateMap.addOne((color, vert.getGrips(color)), color)
             }
         }
 
@@ -95,7 +95,7 @@ class State(cells:Array[Graph], main:Main) {
         }
     }
 
-    def get(key:(Int, Set[Int])) : Int = stateMap.get(key).getOrElse(11)
+    def get(key:(Int, Set[Int])) : Int = stateMap.get(key).getOrElse(0)
 
     def runFileChooser(saveMode: Boolean): Unit = {
         SwingUtilities.invokeLater(new Runnable {

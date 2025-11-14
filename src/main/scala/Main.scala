@@ -48,15 +48,19 @@ import javax.swing.SwingUtilities
 object Main {
 
 	val stickerSize = .8f
-	val cutDepth = .7f
-	val cellSize = .6f
-	val centerSize = .5f
-	val transparency = .8f
+	val cutDepth = .8f
+	val cellSize = .7f
+	val centerSize = .7f
+	val transparency = .9f
 	// val outerCellScaling = 1f
 	
 	def main(args: Array[String]): Unit = {
+
+		
+
+
 		val config = new Lwjgl3ApplicationConfiguration()
-		config.setTitle("11 Cell")
+		config.setTitle("57 Cell")
 		config.setWindowedMode(800, 600)
 	
 		config.setResizable(true)
@@ -84,21 +88,7 @@ class Main extends ApplicationAdapter {
 
 
 	
-	val colors = Array(
-		AWTColor.decode("#ffffff"),
-		AWTColor.decode("#ff0000"),
-		AWTColor.decode("#ff7b00"),
-		AWTColor.decode("#ffff00"),
-		AWTColor.decode("#00ff00"),
-		AWTColor.decode("#00ffff"),
-		AWTColor.decode("#0080ff"),
-		AWTColor.decode("#0000ff"),
-		AWTColor.decode("#9900ff"),
-		AWTColor.decode("#ff00ff"),
-		AWTColor.decode("#686868"),
-		AWTColor.decode("#000000")
-		
-	).map(toGdxColor) 
+	val colors = Colours.DistinctColorArray(57).map(toGdxColor) 
 
 	var orientation = new Quaternion()
 	var sensitivity = 0.2f
@@ -112,29 +102,53 @@ class Main extends ApplicationAdapter {
 	// graph.transform(_.scl(0.8f))
 	
 	val faceArr = graph.faces
-	var graphs = new Array[Graph](21)
-	for (i <- 0 until 20){
+	var graphs = new Array[Graph](13)
+	for (i <- 0 until 12){
 		val graph2 = graph.mirror(i)
 		// val offset = graph2.midpoint.scl(cellSpacing)
 		// graph2.transform(_.scl(outerCellScaling).add(offset))
 		graphs(i) = graph2
+		println(graph2.color)
 	}
-	graphs(20) = graph
+	graphs(12) = graph
+
+	// var graphs = Array[Graph](graph)
 
 	val layer3 = new Array[Graph](60)
+	val layer3faceIDs = new Array[Int](60)
 
-	for (i <- 0 until 20){
+	val layer4 = new ListBuffer[Graph]
+
+	for (i <- 0 until 12){
 		val g = graphs(i)
-		for (j <- 0 until 3){
+		for (j <- 0 until 5){
 			val f0 = g.faces(i)
 			val f1 = f0.getFace(j)
-			val f2 = f1.getOffsetFace(f0, 1)
 			// val f3 = f2.getOffsetFace(f1, -1)
-			layer3(3*i + j) = g.mirror(f2.id)
+			val newGraph = g.mirror(f1.id)
+			layer3(5*i + j) = newGraph
+			layer3faceIDs(5*i + j) = f1.id
 		}
 	}
 
 	graphs = graphs ++ layer3
+
+	val drawnCells = layer3.map(_.color).toSet
+
+	for (i <- 0 until 60){
+		val g = layer3(i)
+		for (f <- g.faces(layer3faceIDs(i)).faces){
+			val newGraph = g.mirror(f.id)
+			if (!drawnCells.contains(newGraph.color)){
+				layer4 += newGraph
+			}
+		}
+	}
+
+	graphs = graphs ++ layer4
+	
+
+	
 
 	graphs.foreach(g => g.transform(x => interpolate(g.midpoint, x, cellSize)))
 
@@ -149,7 +163,15 @@ class Main extends ApplicationAdapter {
 	instances = new Array[ModelInstance](graphs.length)
 
 
-	val cells = graphs.take(10).appended(graph)
+	val cells = new Array[Graph](57)
+	for (g <- graphs){
+		val i = g.color
+		if (cells(i) == null){
+			cells(i) = g
+		}
+	}
+
+	println("colors" + cells.filter(_ != null).length)
 
 	val state = new State(cells, this)
 
@@ -177,12 +199,10 @@ class Main extends ApplicationAdapter {
 	}
 
 	def randomMove {
-		val color = Random.nextInt(11)
+		val color = Random.nextInt(cells.length)
 		val cell = cells(color)
 		var graphID = color
-		if (color == 10){
-			graphID = 20
-		}
+		
 		val twistType = Random.nextInt(3)
 		val pieces = twistType match {
 			case 0 => cell.faces
@@ -230,7 +250,7 @@ class Main extends ApplicationAdapter {
 		case _ => 
 			val (cell, node) = parseMeshID(id)
 			val color = graphs(cell).color
-			(color, node.faces.map(f => f.oppCell).appended(color).toSet)
+			(color, node.getGrips(color))
 	}
 
 	val materialMap = new HashMap[String, Material]
@@ -238,27 +258,35 @@ class Main extends ApplicationAdapter {
 
 	def CenterCell(id:Int) : Int => Int = {
 
+		
+		// val map = new HashMap[Int, Int]()
 
-		val map = new HashMap[Int, Int]()
-
-		val mid = graphs(20)
-		val newMid = graphs(id)
-		map.addOne(mid.color, newMid.color)
-		map.addOne(newMid.color, mid.color)
+		// val mid = graphs(20)
+		// val newMid = graphs(id)
+		// map.addOne(mid.color, newMid.color)
+		// map.addOne(newMid.color, mid.color)
 
 
-		val f0 = mid.faces(id) 
-		for (v <- f0.verts){
-			val f1 = v.getOffsetFace(f0, 2)
-			val f2 = v.getOffsetFace(f0, -2)
-			map.addOne(f1.oppCell, f2.oppCell)
-			map.addOne(f2.oppCell, f1.oppCell)
-		}
+		// val f0 = mid.faces(id) 
+		// for (v <- f0.verts){
+		// 	val f1 = v.getOffsetFace(f0, 2)
+		// 	val f2 = v.getOffsetFace(f0, -2)
+		// 	map.addOne(f1.oppCell, f2.oppCell)
+		// 	map.addOne(f2.oppCell, f1.oppCell)
+		// }
 
-		return x => map.get(x) match {
-			case Some(value) => value
-			case None => x
-		}
+		// return x => map.get(x) match {
+		// 	case Some(value) => value
+		// 	case None => x
+		// }
+
+		val mid = graph
+		return graph.faces(id).faceMirror(_)
+
+
+
+
+
 
 	}
 
@@ -436,13 +464,23 @@ class Main extends ApplicationAdapter {
 			part.triangle(midp, pts.last, pts(0))
 			meshLineBuilder.line(pts.last, pts(0))
 		}
+		
+		
 
+		
 
 
 		builder.end()
+
 		for (j <- 0 until graphs.length){
+			// println(j)
 			// if (j > 0){
 				builder.begin()
+			// }
+
+			// if (j ==0){
+			// 	val (v1,v2,v3) = Graphs.firstVectors
+			// 	DrawPolygon(Array(v1,v2,v3), Color.RED, "fundamentalTriangle")
 			// }
 			meshLineBuilder = builder.part(
 				"lines",
@@ -461,10 +499,10 @@ class Main extends ApplicationAdapter {
 				val ridgeColor = colors(state.get(cell, Set(cell, f.oppCell)))
 				DrawPolygon2(f.pt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
 				
-				for (i <- 0 until 3){
-					val edgeColor = colors(state.get(cell, f.edges(i).faces.map(_.oppCell).appended(cell).toSet))
+				for (i <- 0 until 5){
+					val edgeColor = colors(state.get((cell, f.edges(i).getGrips(cell))))
 					DrawPolygon(f.edgePts(i), edgeColor, "c"+g.id+"e"+f.edges(i).id)
-					val vertColor = colors(state.get(cell, f.verts(i).faces.map(_.oppCell).appended(cell).toSet))
+					val vertColor = colors(state.get(cell, f.verts(i).getGrips(cell)))
 					DrawPolygon(f.vertPts(i), vertColor, "c"+g.id+"v"+f.verts(i).id)
 				}
 			}
@@ -549,7 +587,7 @@ class Main extends ApplicationAdapter {
 								case Buttons.RIGHT => 1
 								case Buttons.MIDDLE =>
 									val (cell, _) = parseMeshID(hit.faceId)
-									if (cell < 20){
+									if (cell < 12){
 										val rotStr =  "c"+cell
 										state.Rotate(CenterCell(cell))
 										state.moveList.addOne(rotStr)
@@ -707,8 +745,8 @@ class Main extends ApplicationAdapter {
 
 		modelBatch.begin(camera)
 		val cellNum = show3rdLayer match {
-			case false => 21
-			case true => 81
+			case false => 73
+			case true => graphs.length
 		}
 		for (i <- 0 until cellNum){
 			modelBatch.render(instances(i), environment)
@@ -783,7 +821,7 @@ class Main extends ApplicationAdapter {
 		localRay.mul(invTransform)  // now the ray is in local coordinates
 		val tempInstances = show3rdLayer match {
 			case true => instances
-			case false => instances.take(21)
+			case false => instances.take(73)
 		}
 		for {
 			instance <- tempInstances
