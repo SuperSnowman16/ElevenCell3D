@@ -1,18 +1,25 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "scala",
-            "request": "launch",
-            "name": "Untitled",
-            "mainClass": "Launcher",
-            "args": [],
-            "jvmOptions": [],
-            "env": {}
-        }
-
-    ]   
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "Launcher",
+      "mainClass": "Launcher",
+      "buildTarget": "file:/C:/Users/super/Documents/GitHub/ElevenCell3D/?id=root",
+      "args": [],
+      "jvmOptions": [],
+      "env": {}
+    },
+    {
+      "type": "scala",
+      "request": "launch",
+      "name": "Main",
+      "mainClass": "Main",
+      "buildTarget": "file:/C:/Users/super/Documents/GitHub/ElevenCell3D/?id=root",
+      "args": [],
+      "jvmOptions": [],
+      "env": {}
+    }
+  ]
 }

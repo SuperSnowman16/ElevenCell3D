@@ -69,6 +69,9 @@ class State(cells:Array[Graph], main:Main) {
         // undoStack.clear()
         
         // main.updateColors
+
+        // println(isSolved)
+
     }
 
     def Rotate(gripFn:Int=>Int){
@@ -87,6 +90,18 @@ class State(cells:Array[Graph], main:Main) {
         }
         
         main.updateColors
+
+        
+    }
+
+    def isSolved : Boolean = {
+        val colorLocations = (0 to 10).map(x => stateMap.get((x, Set(x))).get).toArray
+        for ((k,v) <- stateMap){
+            if (k._1 != colorLocations(v)){
+                println("" + k + " " + v + " " + colorLocations(v))
+            }
+        }
+        stateMap.map(x => colorLocations(x._1._1) == x._2).reduce(_ && _)
     }
 
     def Randomise {
@@ -100,7 +115,7 @@ class State(cells:Array[Graph], main:Main) {
     def runFileChooser(saveMode: Boolean): Unit = {
         SwingUtilities.invokeLater(new Runnable {
             override def run(): Unit = {
-                val cwd = new java.io.File(System.getProperty("user.dir"))
+                val cwd = new java.io.File(System.getProperty("user.dir") + "/Saves")
                 val chooser = new JFileChooser(cwd)
                 val result = if (saveMode) chooser.showSaveDialog(null)
                     else chooser.showOpenDialog(null)
@@ -178,6 +193,7 @@ class State(cells:Array[Graph], main:Main) {
         val handle = Gdx.files.absolute(path)
         handle.writeString(scrambleList.mkString(",")+";"+moveList.mkString(","), false)
         println(s"Saved to $path")
+        Main.isDirty = false
     }
 
     def loadState(path: String): Unit = {
@@ -202,6 +218,11 @@ class State(cells:Array[Graph], main:Main) {
                                 moveList.addOne(move)
                             }
                         }
+                        println("Scramble: " + scrambleList.length + " moves")
+                        println("Twists: " + moveList.length + " moves")
+                        Main.isDirty = false
+                        
+
                         
                     case _: String => 
                         println("invalid file")
@@ -211,6 +232,8 @@ class State(cells:Array[Graph], main:Main) {
                 Gdx.app.postRunnable(new Runnable {
                     override def run(): Unit = {
                         main.updateColors
+                        println(stateMap.mkString("\n"))
+                        print(isSolved)
                     }
                 })
 

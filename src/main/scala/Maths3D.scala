@@ -77,6 +77,7 @@ object Maths3D {
 	def asinh(x:Double) : Double = {
         log(x + sqrt(x*x +1))
     }
+	
     def acosh(x:Double) : Double = {
         require(x >= 1)
         log(x + sqrt(x*x -1))
@@ -100,8 +101,15 @@ object Maths3D {
 	// Möbius operations using Vector3
 	object Mobius {
 
+
+		def PoincareToOrthographic(v:Vector3) : Vector3 = {
+			val (x,y,z) = (v.x, v.y, v.z)
+			val denom = 1 - (x*x + y*y + z*z)
+			return new Vector3(v).scl(2/denom)
+		}
+
 	/** Möbius addition: u ⊕ v */
-		def mobiusAdd(u: Vector3, v: Vector3): Vector3 = {
+		def mobiusAdd(u: Vector3, v: Vector3) : Vector3 = {
 			val u2 = u.len2()
 			val v2 = v.len2()
 			val uv = u.dot(v)

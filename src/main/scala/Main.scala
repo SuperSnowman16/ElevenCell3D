@@ -43,9 +43,23 @@ import com.badlogic.gdx.graphics.glutils.HdpiMode
 import com.badlogic.gdx.utils.viewport.FitViewport
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
+import Maths3D.Mobius.PoincareToOrthographic
+import java.lang.reflect.InvocationTargetException
+import javax.swing.JFileChooser
+import java.nio.file.{Files, Paths, StandardOpenOption}
+import java.nio.charset.StandardCharsets
+import java.awt.Toolkit
+import javax.swing.JDialog
+import java.util.concurrent.Executors
 
 
 object Main {
+
+	@volatile var isDirty = false
+	// flag used to prevent multiple choosers at once
+	@volatile private var isExitDialogOpen = false
+	private val defaultDir = Paths.get("Saves")
+	Files.createDirectories(defaultDir)
 
 	val stickerSize = .8f
 	val cutDepth = .7f
@@ -59,10 +73,17 @@ object Main {
 		config.setTitle("11 Cell")
 		config.setWindowedMode(800, 600)
 	
+		val app = new Main()
+
 		config.setResizable(true)
 		config.setHdpiMode(HdpiMode.Pixels)
 		config.setBackBufferConfig(8, 8, 8, 8, 16, 0, 4)
-		new Lwjgl3Application(new Main(), config)
+		config.setWindowListener(new Lwjgl3WindowAdapter {
+			override def closeRequested(): Boolean = {
+				app.handleCloseRequest()
+			}
+		})
+		new Lwjgl3Application(app, config)
 	}
 }
 
@@ -81,6 +102,9 @@ class Main extends ApplicationAdapter {
 		new Color(c.getRed / 255f, c.getGreen / 255f, c.getBlue / 255f, transparency)
 	}
 
+	private val saveExecutor = Executors.newSingleThreadExecutor()
+
+	
 
 
 	
@@ -137,6 +161,8 @@ class Main extends ApplicationAdapter {
 	graphs = graphs ++ layer3
 
 	graphs.foreach(g => g.transform(x => interpolate(g.midpoint, x, cellSize)))
+
+	// graphs.foreach(g => g.transform(PoincareToOrthographic(_)))
 
 	// val f = rotateAroundLine(_, graphs(0).midpoint, graphs(0).faces(1).centerMidpt, 120)
 	// graphs.foreach(g => g.transform(translateToOrigin(_, new Vector3(.5f,0,0))))
@@ -198,6 +224,7 @@ class Main extends ApplicationAdapter {
 		state.Twist(color, piece.TwistFn(1))
 		state.scrambleList.addOne(twistStr)
 
+		isDirty = true
 	}
 
 	// def ensureUniqueMaterials(): Unit = {
@@ -484,216 +511,17 @@ class Main extends ApplicationAdapter {
 
 
 
-		Gdx.input.setInputProcessor(new InputAdapter {
-
-			val clickThreshold = 5f // pixels
-			var dragDetected = false
-			var touchStartX = 0f
-			var touchStartY = 0f
-			override def touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
-				rotating = true
-				lastX = screenX
-				lastY = screenY
-
-				touchStartX = screenX
-				touchStartY = screenY
-				dragDetected = false
-
-				true
-			}
-
-			override def scrolled(amountX: Float, amountY: Float): Boolean = {
-				camera.position.add(0f, 0f, amountY*.1f)
-				if (camera.position.z < 0f){
-					camera.position.set(0,0,0)
-				} 
-				return true
-			}
-
-
-			override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
-				if (rotating) {
-					val dx = (screenX - lastX) * sensitivity
-					val dy = (screenY - lastY) * sensitivity
-
-					// mark as drag if moved enough
-					if (!dragDetected && Vector2.dst(touchStartX, touchStartY, screenX, screenY) > clickThreshold){
-						dragDetected = true
-					}
-					// build incremental quaternions
-					val qYaw   = new Quaternion(Vector3.Y, dx)  // rotate around Y
-					val qPitch = new Quaternion(Vector3.X, dy)  // rotate around X
-
-					// update orientation (order matters!)
-					orientation.mulLeft(qYaw).mulLeft(qPitch)
-
-					// apply orientation to the cube
-					instances.map(_.transform.idt().rotate(orientation))
-
-					lastX = screenX
-					lastY = screenY
-				}
-				true
-			}
-
-			override def touchUp(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
-				rotating = false
-
-				// Only pick if it was a click, not a drag
-				if (!dragDetected) {
-					val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
-					pickFace(ray, instances) match {
-						case Some(hit) =>
-							val btn = button match {
-								case Buttons.LEFT => -1
-								case Buttons.RIGHT => 1
-								case Buttons.MIDDLE =>
-									val (cell, _) = parseMeshID(hit.faceId)
-									if (cell < 20){
-										val rotStr =  "c"+cell
-										state.Rotate(CenterCell(cell))
-										state.moveList.addOne(rotStr)
-										val axis = graphs(cell).midpoint
-										val rot = new Quaternion(axis, 180f)
-										orientation = orientation.mul(rot)
-
-										instances.map(_.transform.idt().rotate(orientation))
-									}
-									updateColors
-									
-
-									0
-								case _: Int => 0
-							} 
-							// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
-							val (cell, node) = parseMeshID(hit.faceId)
-							val dir =  btn * (graphs(cell).isMirrored match {
-								case true => -1
-								case false => 1
-							})
-							
-
-							if (dir != 0){
-								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
-									val rotStr = dir+"r"+cell+node
-									state.Rotate(node.TwistFn(dir))
-									state.moveList.addOne(rotStr)
-									state.undoStack.clear()
-									
-										
-									
-								}else{
-									val rotStr = dir+"t"+cell+node.toString()
-									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
-									state.moveList.addOne(rotStr)
-									state.undoStack.clear()
-								}
-								updateColors
-								
-							}
-								
-							
-
-						case None =>
-							// println("No hit")
-							// dumpInstanceInfo()
-							// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
-					}
-				}
-
-				true
-			}
-
-			override def keyDown(keycode : Int): Boolean = {
-
-				if (keycode >= Keys.F1 && keycode <= Keys.F12) {
-					val n = keycode - Keys.F1 + 1
-					n match {
-						case x if x <= 6 => 
-
-
-							SwingUtilities.invokeLater(new Runnable {
-								override def run(): Unit = {
-
-									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
-									if (confirm == JOptionPane.YES_OPTION){
-										state.ResetState
-
-										if (x == 6){
-											for (i <- 0 until 1000){
-												randomMove
-											}
-										}else{
-											for (i <- 0 until x){
-												randomMove
-											}
-										}
-									}
-									Gdx.app.postRunnable(new Runnable {
-										override def run(): Unit = {
-											updateColors
-										}
-									})
-									
-								}
-							})
-
-						case 12 => 
-							SwingUtilities.invokeLater(new Runnable {
-								override def run(): Unit = {
-									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
-									if (confirm == JOptionPane.YES_OPTION){
-										state.ResetState
-										
-									
-									}
-									Gdx.app.postRunnable(new Runnable {
-										override def run(): Unit = {
-											updateColors
-										}
-									})
-								}
-							})
-
-
-						// case 8 => 
-						// 	println(state.moveList)
-							
-						
-						case _ => ()
-					}
-					
-				}
-				if (keycode == Keys.TAB){
-					show3rdLayer = !show3rdLayer
-				}
-				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)
-					|| Gdx.input.isKeyPressed(Keys.CONTROL_RIGHT)
-					|| Gdx.input.isKeyPressed(Keys.SYM)){
-					keycode match {
-						case Keys.S => state.runFileChooser(true)
-						case Keys.O => state.runFileChooser(false)
-						case Keys.Z =>
-							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT) 
-								|| Gdx.input.isKeyPressed(Keys.SHIFT_RIGHT)){
-								state.RedoMove
-							}else{
-								state.UndoMove
-							}
-						case Keys.Y => state.RedoMove
-						case _ => ()
-					}
-				}
-				true
-			}
-
-		})
+		Gdx.input.setInputProcessor(defaultInputProcessor)
 	}
 
 	
 	
 
 	override def render(): Unit = {
+
+
+
+
 		Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
 		Gdx.gl.glClearColor(0, 0, 0, 1)
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT)
@@ -710,16 +538,153 @@ class Main extends ApplicationAdapter {
 			case false => 21
 			case true => 81
 		}
-		for (i <- 0 until cellNum){
+		for (i <- 0 until cellNum){	
 			modelBatch.render(instances(i), environment)
 		}
 		modelBatch.end()
+
+
+		
 	}
 
 	override def dispose(): Unit = {
 		modelBatch.dispose()
 		// model.dispose()
 	}
+
+
+	
+
+	
+
+	/** Called by Lwjgl3WindowAdapter.closeRequested(). */
+	def handleCloseRequest(): Boolean = {
+    if (!isDirty) return true
+    if (isExitDialogOpen) return false
+
+    isExitDialogOpen = true
+
+    // Install modal input blocker on the libGDX thread
+    Gdx.app.postRunnable(new Runnable {
+      override def run(): Unit = {
+        Gdx.input.setInputProcessor(modalInputBlocker)
+      }
+    })
+
+    // Run Swing confirm + modal JFileChooser on the EDT
+    SwingUtilities.invokeLater(new Runnable {
+      override def run(): Unit = {
+        try {
+          // 1) Confirm dialog
+          val choice = JOptionPane.showConfirmDialog(
+            null,
+            "You have unsaved changes. Save before exiting?",
+            "Unsaved Changes",
+            JOptionPane.YES_NO_CANCEL_OPTION
+          )
+
+          choice match {
+            case JOptionPane.YES_OPTION =>
+              // 2) Modal JDialog containing JFileChooser
+              val dialog = new JDialog(null: java.awt.Frame, "Choose save file", java.awt.Dialog.ModalityType.APPLICATION_MODAL)
+              val chooser = new JFileChooser()
+              chooser.setCurrentDirectory(defaultDir.toFile)
+
+              chooser.addActionListener(new java.awt.event.ActionListener {
+                override def actionPerformed(e: java.awt.event.ActionEvent): Unit = {
+                  val cmd = e.getActionCommand
+                  if ("ApproveSelection" == cmd || "CancelSelection" == cmd) {
+                    dialog.setVisible(false)
+                    dialog.dispose()
+                  }
+                }
+              })
+
+              dialog.getContentPane.add(chooser)
+              dialog.pack()
+              dialog.setAlwaysOnTop(true)
+              dialog.setLocationRelativeTo(null)
+              dialog.setVisible(true) // blocks EDT until chooser closed
+
+              val selected = chooser.getSelectedFile
+              if (selected != null) {
+                // write off the EDT
+                saveExecutor.submit(new Runnable {
+                  override def run(): Unit = {
+                    try {
+                      state.saveState(selected.getPath())
+                      isDirty = false
+
+                      // restore input & exit on libGDX thread
+                      Gdx.app.postRunnable(new Runnable {
+                        override def run(): Unit = {
+                          Gdx.input.setInputProcessor(defaultInputProcessor)
+                          isExitDialogOpen = false
+                          Gdx.app.exit()
+                        }
+                      })
+                    } catch {
+                      case ex: Exception =>
+                        ex.printStackTrace()
+                        // show error on EDT then restore input
+                        JOptionPane.showMessageDialog(null, s"Save failed: ${ex.getMessage}", "Save Error", JOptionPane.ERROR_MESSAGE)
+                        Gdx.app.postRunnable(new Runnable {
+                          override def run(): Unit = {
+                            Gdx.input.setInputProcessor(defaultInputProcessor)
+                            isExitDialogOpen = false
+                          }
+                        })
+                    }
+                  }
+                })
+              } else {
+                // chooser cancelled -> restore input on libGDX thread
+                Gdx.app.postRunnable(new Runnable {
+                  override def run(): Unit = {
+                    Gdx.input.setInputProcessor(defaultInputProcessor)
+                    isExitDialogOpen = false
+                  }
+                })
+              }
+
+            case JOptionPane.NO_OPTION =>
+              // Don't save -> restore input + exit
+              Gdx.app.postRunnable(new Runnable {
+                override def run(): Unit = {
+                  Gdx.input.setInputProcessor(defaultInputProcessor)
+                  isExitDialogOpen = false
+                  Gdx.app.exit()
+                }
+              })
+
+            case _ => // CANCEL or closed
+              Gdx.app.postRunnable(new Runnable {
+                override def run(): Unit = {
+                  Gdx.input.setInputProcessor(defaultInputProcessor)
+                  isExitDialogOpen = false
+                }
+              })
+          }
+        } catch {
+          case t: Throwable =>
+            t.printStackTrace()
+            Gdx.app.postRunnable(new Runnable {
+              override def run(): Unit = {
+                Gdx.input.setInputProcessor(defaultInputProcessor)
+                isExitDialogOpen = false
+              }
+            })
+        }
+      }
+    })
+
+    // Cancel the native close now; we'll exit later if requested
+    false
+  }
+
+	// def dispose(): Unit = {
+	// 	// cleanup
+	// }
 
 	// def drawTriangle(meshPartBuilder:MeshPartBuilder, v1: Vector3, v2: Vector3, v3: Vector3, color:Color){
 		
@@ -827,7 +792,230 @@ class Main extends ApplicationAdapter {
 		closestHit
 	}
 
-	
+	val defaultInputProcessor = new InputAdapter {
+
+			val clickThreshold = 5f // pixels
+			var dragDetected = false
+			var touchStartX = 0f
+			var touchStartY = 0f
+			override def touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
+				rotating = true
+				lastX = screenX
+				lastY = screenY
+
+				touchStartX = screenX
+				touchStartY = screenY
+				dragDetected = false
+
+				true
+			}
+
+			override def scrolled(amountX: Float, amountY: Float): Boolean = {
+				camera.position.add(0f, 0f, amountY*.1f)
+				if (camera.position.z < 0f){
+					camera.position.set(0,0,0)
+				} 
+				return true
+			}
+
+
+			override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
+				if (rotating) {
+					val dx = (screenX - lastX) * sensitivity
+					val dy = (screenY - lastY) * sensitivity
+
+					// mark as drag if moved enough
+					if (!dragDetected && Vector2.dst(touchStartX, touchStartY, screenX, screenY) > clickThreshold){
+						dragDetected = true
+					}
+					// build incremental quaternions
+					val qYaw   = new Quaternion(Vector3.Y, dx)  // rotate around Y
+					val qPitch = new Quaternion(Vector3.X, dy)  // rotate around X
+
+					// update orientation (order matters!)
+					orientation.mulLeft(qYaw).mulLeft(qPitch)
+
+					// apply orientation to the cube
+					instances.map(_.transform.idt().rotate(orientation))
+
+					lastX = screenX
+					lastY = screenY
+				}
+				true
+			}
+
+			override def touchUp(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
+				rotating = false
+
+				// Only pick if it was a click, not a drag
+				if (!dragDetected) {
+					val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
+					pickFace(ray, instances) match {
+						case Some(hit) =>
+							val btn = button match {
+								case Buttons.LEFT => -1
+								case Buttons.RIGHT => 1
+								case Buttons.MIDDLE =>
+									val (cell, _) = parseMeshID(hit.faceId)
+									if (cell < 20){
+										val rotStr =  "c"+cell
+										state.Rotate(CenterCell(cell))
+										state.moveList.addOne(rotStr)
+										val axis = graphs(cell).midpoint
+										val rot = new Quaternion(axis, 180f)
+										orientation = orientation.mul(rot)
+
+										instances.map(_.transform.idt().rotate(orientation))
+										isDirty = true
+									}
+									updateColors
+									0
+
+								case _: Int => 0
+							} 
+							// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
+							val (cell, node) = parseMeshID(hit.faceId)
+							val dir =  btn * (graphs(cell).isMirrored match {
+								case true => -1
+								case false => 1
+							})
+							
+
+							if (dir != 0){
+								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+									val rotStr = dir+"r"+cell+node
+									state.Rotate(node.TwistFn(dir))
+									state.moveList.addOne(rotStr)
+									state.undoStack.clear()
+									isDirty = true
+									
+										
+									
+								}else{
+									val rotStr = dir+"t"+cell+node.toString()
+									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
+									state.moveList.addOne(rotStr)
+									state.undoStack.clear()
+									isDirty = true
+								}
+								updateColors
+								
+							}
+								
+							
+
+						case None =>
+							// println("No hit")
+							// dumpInstanceInfo()
+							// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
+					}
+				}
+
+				true
+			}
+
+			override def keyDown(keycode : Int): Boolean = {
+
+				if (keycode >= Keys.F1 && keycode <= Keys.F12 && !Gdx.input.isKeyPressed(Keys.ALT_LEFT) && Gdx.input.isKeyPressed(Keys.ALT_RIGHT)) {
+					val n = keycode - Keys.F1 + 1
+					n match {
+						case x if x <= 6 => 
+
+
+							SwingUtilities.invokeLater(new Runnable {
+								override def run(): Unit = {
+
+									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
+									if (confirm == JOptionPane.YES_OPTION){
+										state.ResetState
+
+										if (x == 6){
+											for (i <- 0 until 1000){
+												randomMove
+											}
+										}else{
+											for (i <- 0 until x){
+												randomMove
+											}
+										}
+										isDirty = true
+									}
+									Gdx.app.postRunnable(new Runnable {
+										override def run(): Unit = {
+											updateColors
+										}
+									})
+									
+								}
+							})
+
+						case 12 => 
+							SwingUtilities.invokeLater(new Runnable {
+								override def run(): Unit = {
+									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
+									if (confirm == JOptionPane.YES_OPTION){
+										state.ResetState
+										isDirty = false
+										
+									
+									}
+									Gdx.app.postRunnable(new Runnable {
+										override def run(): Unit = {
+											updateColors
+										}
+									})
+								}
+							})
+
+
+						// case 8 => 
+						// 	println(state.moveList)
+							
+						
+						case _ => ()
+					}
+					
+				}
+				if (keycode == Keys.TAB){
+					show3rdLayer = !show3rdLayer
+				}
+				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)
+					|| Gdx.input.isKeyPressed(Keys.CONTROL_RIGHT)
+					|| Gdx.input.isKeyPressed(Keys.SYM)){
+					keycode match {
+						case Keys.S => state.runFileChooser(true)
+						case Keys.O => state.runFileChooser(false)
+						case Keys.Z =>
+							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT) 
+								|| Gdx.input.isKeyPressed(Keys.SHIFT_RIGHT)){
+								state.RedoMove
+							}else{
+								state.UndoMove
+							}
+							isDirty = true
+						case Keys.Y => state.RedoMove
+							isDirty = true
+						case _ => ()
+					}
+				}
+				true
+			}
+
+		}
+
+		val modalInputBlocker: InputProcessor = new InputAdapter {
+
+			
+
+			override def keyDown(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+			override def keyUp(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+			override def keyTyped(c: Char) = { Toolkit.getDefaultToolkit.beep(); true }
+			override def touchDown(x: Int, y: Int, p: Int, b: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+			override def touchUp(x: Int, y: Int, p: Int, b: Int) = { true }
+			override def touchDragged(x: Int, y: Int, p: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+
+			
+		}
 	
 }
 
