@@ -51,6 +51,7 @@ import java.nio.charset.StandardCharsets
 import java.awt.Toolkit
 import javax.swing.JDialog
 import java.util.concurrent.Executors
+import Hyperboloid._
 
 
 object Main {
@@ -104,9 +105,13 @@ class Main extends ApplicationAdapter {
 
 	private val saveExecutor = Executors.newSingleThreadExecutor()
 
-	
+	var hTransform = IdMatrix
 
+	val M = TranslationMat(HVec(Vector3.X, 1))
+	hTransform = M.mul(M.cpy.inv)
 
+	var leftClickDown = false
+	var rightClickDown = false
 	
 	val colors = Array(
 		AWTColor.decode("#ffffff"),
@@ -129,14 +134,18 @@ class Main extends ApplicationAdapter {
 	var lastX = 0
 	var lastY = 0
 	var rotating = false
-	var show3rdLayer = true
+	var show3rdLayer = false
 
 	val graph = Graphs.GenerateGraph
 	// graph.transform(mobiusScalarMultiply(0.8f, _))
 	// graph.transform(_.scl(0.8f))
 	
 	val faceArr = graph.faces
+
+	
 	var graphs = new Array[Graph](21)
+
+	
 	for (i <- 0 until 20){
 		val graph2 = graph.mirror(i)
 		// val offset = graph2.midpoint.scl(cellSpacing)
@@ -144,6 +153,8 @@ class Main extends ApplicationAdapter {
 		graphs(i) = graph2
 	}
 	graphs(20) = graph
+
+	// graphs = Array(graph, graphs(0)) 
 
 	val layer3 = new Array[Graph](60)
 
@@ -160,7 +171,7 @@ class Main extends ApplicationAdapter {
 
 	graphs = graphs ++ layer3
 
-	graphs.foreach(g => g.transform(x => interpolate(g.midpoint, x, cellSize)))
+	graphs.foreach(g => g.transform(x => hlerp(g.midpoint, x, cellSize)))
 
 	// graphs.foreach(g => g.transform(PoincareToOrthographic(_)))
 
@@ -173,6 +184,8 @@ class Main extends ApplicationAdapter {
 	}
 
 	instances = new Array[ModelInstance](graphs.length)
+
+	val cellMeshes = new Array[Mesh](graphs.length)
 
 
 	val cells = graphs.take(10).appended(graph)
@@ -361,8 +374,8 @@ class Main extends ApplicationAdapter {
 	override def create(): Unit = {
 
 		// Set up camera
-		camera = new PerspectiveCamera(67, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
-		camera.position.set(0f, 0f, 2f) 
+		camera = new PerspectiveCamera(30, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
+		camera.position.set(0f, 0f, 5f) 
 		camera.lookAt(0f, 0f, 0f)
 		camera.near = 0.1f
 		camera.far = 100f
@@ -413,7 +426,8 @@ class Main extends ApplicationAdapter {
 		
 
 		// Draws a polygon connecting the first point to each subsequent consecutive pair with a triangle 
-		def DrawPolygon(pts:Array[Vector3], color:Color, name:String){ 
+		def DrawPolygon(hpts:Array[HVec3], color:Color, name:String){ 
+			val pts = hpts.map(_.mul(hTransform).toPoincare)
 			val mat = materialMap.get(name) match {
 				case Some(value) => value
 				case None => 
@@ -441,7 +455,9 @@ class Main extends ApplicationAdapter {
 		}
 
 		// Draws a polygon connecting the midpoint to all the other points in order, then back to the first
-		def DrawPolygon2(midp:Vector3, pts:Array[Vector3], color:Color, name:String){ 
+		def DrawPolygon2(hmidp:HVec3, hpts:Array[HVec3], color:Color, name:String){ 
+			val midp = hmidp.mul(hTransform).toPoincare
+			val pts = hpts.map(_.mul(hTransform).toPoincare)
 			val mat = materialMap.get(name) match {
 				case Some(value) => value
 				case None => 
@@ -484,6 +500,7 @@ class Main extends ApplicationAdapter {
 
 				
 				DrawPolygon2(f.centerMidpt, f.centerPts, colors(cell), "c"+g.id+"m"+f.id)
+
 
 				val ridgeColor = colors(state.get(cell, Set(cell, f.oppCell)))
 				DrawPolygon2(f.pt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
@@ -794,228 +811,261 @@ class Main extends ApplicationAdapter {
 
 	val defaultInputProcessor = new InputAdapter {
 
-			val clickThreshold = 5f // pixels
-			var dragDetected = false
-			var touchStartX = 0f
-			var touchStartY = 0f
-			override def touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
-				rotating = true
-				lastX = screenX
-				lastY = screenY
-
-				touchStartX = screenX
-				touchStartY = screenY
-				dragDetected = false
-
-				true
+		val clickThreshold = 5f // pixels
+		var dragDetected = false
+		var touchStartX = 0f
+		var touchStartY = 0f
+		override def touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
+			button match {
+				case Buttons.LEFT =>
+					leftClickDown = true
+				case Buttons.RIGHT =>
+					rightClickDown = true
+				case _: Int => ()
 			}
 
-			override def scrolled(amountX: Float, amountY: Float): Boolean = {
-				camera.position.add(0f, 0f, amountY*.1f)
-				if (camera.position.z < 0f){
-					camera.position.set(0,0,0)
-				} 
-				return true
-			}
+			rotating = true
+			lastX = screenX
+			lastY = screenY
+
+			touchStartX = screenX
+			touchStartY = screenY
+			dragDetected = false
+
+			true
+		}
+
+		override def scrolled(amountX: Float, amountY: Float): Boolean = {
+			camera.position.add(0f, 0f, amountY*.1f)
+			if (camera.position.z < 0f){
+				camera.position.set(0,0,0)
+			} 
+			return true
+		}
 
 
-			override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
-				if (rotating) {
-					val dx = (screenX - lastX) * sensitivity
-					val dy = (screenY - lastY) * sensitivity
+		override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
+			if (rotating) {
+				val dx = (screenX - lastX) * sensitivity
+				val dy = (screenY - lastY) * sensitivity
 
-					// mark as drag if moved enough
-					if (!dragDetected && Vector2.dst(touchStartX, touchStartY, screenX, screenY) > clickThreshold){
-						dragDetected = true
-					}
-					// build incremental quaternions
+				// mark as drag if moved enough
+				if (!dragDetected && Vector2.dst(touchStartX, touchStartY, screenX, screenY) > clickThreshold){
+					dragDetected = true
+				}
+				// build incremental quaternions
+				if (leftClickDown){
 					val qYaw   = new Quaternion(Vector3.Y, dx)  // rotate around Y
 					val qPitch = new Quaternion(Vector3.X, dy)  // rotate around X
 
 					// update orientation (order matters!)
 					orientation.mulLeft(qYaw).mulLeft(qPitch)
 
-					// apply orientation to the cube
-					instances.map(_.transform.idt().rotate(orientation))
-
-					lastX = screenX
-					lastY = screenY
 				}
-				true
+
+				if (rightClickDown){
+					val transformX = TranslationMat(HVec(Vector3.X, 1))
+
+					// hTransform.mulLeft(transformX)
+					hTransform.mul(transformX)
+				}
+				
+
+
+				// apply orientation to the cube
+				instances.map(_.transform.idt().rotate(orientation))
+
+				lastX = screenX
+				lastY = screenY
 			}
+			true
+		}
 
-			override def touchUp(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
-				rotating = false
+		override def touchUp(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean = {
+			rotating = false
+			button match {
+				case Buttons.LEFT =>
+					leftClickDown = false
+				case Buttons.RIGHT =>
+					rightClickDown = false
+				case _: Int => ()
+			}
+			
 
-				// Only pick if it was a click, not a drag
-				if (!dragDetected) {
-					val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
-					pickFace(ray, instances) match {
-						case Some(hit) =>
-							val btn = button match {
-								case Buttons.LEFT => -1
-								case Buttons.RIGHT => 1
-								case Buttons.MIDDLE =>
-									val (cell, _) = parseMeshID(hit.faceId)
-									if (cell < 20){
-										val rotStr =  "c"+cell
-										state.Rotate(CenterCell(cell))
-										state.moveList.addOne(rotStr)
-										val axis = graphs(cell).midpoint
-										val rot = new Quaternion(axis, 180f)
-										orientation = orientation.mul(rot)
-
-										instances.map(_.transform.idt().rotate(orientation))
-										isDirty = true
-									}
-									updateColors
-									0
-
-								case _: Int => 0
-							} 
-							// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
-							val (cell, node) = parseMeshID(hit.faceId)
-							val dir =  btn * (graphs(cell).isMirrored match {
-								case true => -1
-								case false => 1
-							})
-							
-
-							if (dir != 0){
-								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
-									val rotStr = dir+"r"+cell+node
-									state.Rotate(node.TwistFn(dir))
+			// Only pick if it was a click, not a drag
+			if (!dragDetected) {
+				val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
+				pickFace(ray, instances) match {
+					case Some(hit) =>
+						val btn = button match {
+							case Buttons.LEFT => -1
+							case Buttons.RIGHT => 1
+							case Buttons.MIDDLE =>
+								val (cell, _) = parseMeshID(hit.faceId)
+								if (cell < 20){
+									val rotStr =  "c"+cell
+									state.Rotate(CenterCell(cell))
 									state.moveList.addOne(rotStr)
-									state.undoStack.clear()
-									isDirty = true
-									
-										
-									
-								}else{
-									val rotStr = dir+"t"+cell+node.toString()
-									state.Twist(graphs(cell).color, node.TwistFn(dir)) 
-									state.moveList.addOne(rotStr)
-									state.undoStack.clear()
+									val axis = graphs(cell).midpoint.to3D
+									println(axis)
+									val rot = new Quaternion(axis, 180f)
+									orientation = orientation.mul(rot)
+
+									instances.map(_.transform.idt().rotate(orientation))
 									isDirty = true
 								}
 								updateColors
+								0
+
+							case _: Int => 0
+						} 
+						// println(materialMap(hit.faceId).get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute].color.toIntBits())
+						val (cell, node) = parseMeshID(hit.faceId)
+						val dir =  btn * (graphs(cell).isMirrored match {
+							case true => -1
+							case false => 1
+						})
+						
+
+						if (dir != 0){
+							if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+								val rotStr = dir+"r"+cell+node
+								state.Rotate(node.TwistFn(dir))
+								state.moveList.addOne(rotStr)
+								state.undoStack.clear()
+								isDirty = true
 								
+									
+								
+							}else{
+								val rotStr = dir+"t"+cell+node.toString()
+								state.Twist(graphs(cell).color, node.TwistFn(dir)) 
+								state.moveList.addOne(rotStr)
+								state.undoStack.clear()
+								isDirty = true
 							}
-								
+							updateColors
 							
-
-						case None =>
-							// println("No hit")
-							// dumpInstanceInfo()
-							// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
-					}
-				}
-
-				true
-			}
-
-			override def keyDown(keycode : Int): Boolean = {
-
-				if (keycode >= Keys.F1 && keycode <= Keys.F12 && !Gdx.input.isKeyPressed(Keys.ALT_LEFT) && Gdx.input.isKeyPressed(Keys.ALT_RIGHT)) {
-					val n = keycode - Keys.F1 + 1
-					n match {
-						case x if x <= 6 => 
-
-
-							SwingUtilities.invokeLater(new Runnable {
-								override def run(): Unit = {
-
-									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
-									if (confirm == JOptionPane.YES_OPTION){
-										state.ResetState
-
-										if (x == 6){
-											for (i <- 0 until 1000){
-												randomMove
-											}
-										}else{
-											for (i <- 0 until x){
-												randomMove
-											}
-										}
-										isDirty = true
-									}
-									Gdx.app.postRunnable(new Runnable {
-										override def run(): Unit = {
-											updateColors
-										}
-									})
-									
-								}
-							})
-
-						case 12 => 
-							SwingUtilities.invokeLater(new Runnable {
-								override def run(): Unit = {
-									val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
-									if (confirm == JOptionPane.YES_OPTION){
-										state.ResetState
-										isDirty = false
-										
-									
-									}
-									Gdx.app.postRunnable(new Runnable {
-										override def run(): Unit = {
-											updateColors
-										}
-									})
-								}
-							})
-
-
-						// case 8 => 
-						// 	println(state.moveList)
+						}
 							
 						
-						case _ => ()
-					}
-					
+
+					case None =>
+						// println("No hit")
+						// dumpInstanceInfo()
+						// updateFaceColorByPart("c20f12", new Color(1f, 0f, 0f, 1f))
 				}
-				if (keycode == Keys.TAB){
-					show3rdLayer = !show3rdLayer
-				}
-				if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)
-					|| Gdx.input.isKeyPressed(Keys.CONTROL_RIGHT)
-					|| Gdx.input.isKeyPressed(Keys.SYM)){
-					keycode match {
-						case Keys.S => state.runFileChooser(true)
-						case Keys.O => state.runFileChooser(false)
-						case Keys.Z =>
-							if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT) 
-								|| Gdx.input.isKeyPressed(Keys.SHIFT_RIGHT)){
-								state.RedoMove
-							}else{
-								state.UndoMove
-							}
-							isDirty = true
-						case Keys.Y => state.RedoMove
-							isDirty = true
-						case _ => ()
-					}
-				}
-				true
 			}
 
+			true
 		}
 
-		val modalInputBlocker: InputProcessor = new InputAdapter {
+		override def keyDown(keycode : Int): Boolean = {
 
-			
+			if (keycode >= Keys.F1 && keycode <= Keys.F12 && !Gdx.input.isKeyPressed(Keys.ALT_LEFT) && !Gdx.input.isKeyPressed(Keys.ALT_RIGHT)) {
+				val n = keycode - Keys.F1 + 1
+				n match {
+					case x if x <= 6 => 
 
-			override def keyDown(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
-			override def keyUp(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
-			override def keyTyped(c: Char) = { Toolkit.getDefaultToolkit.beep(); true }
-			override def touchDown(x: Int, y: Int, p: Int, b: Int) = { Toolkit.getDefaultToolkit.beep(); true }
-			override def touchUp(x: Int, y: Int, p: Int, b: Int) = { true }
-			override def touchDragged(x: Int, y: Int, p: Int) = { Toolkit.getDefaultToolkit.beep(); true }
 
-			
+						SwingUtilities.invokeLater(new Runnable {
+							override def run(): Unit = {
+
+								val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to scramble?", "Scramble?", JOptionPane.YES_NO_OPTION)
+								if (confirm == JOptionPane.YES_OPTION){
+									state.ResetState
+
+									if (x == 6){
+										for (i <- 0 until 1000){
+											randomMove
+										}
+									}else{
+										for (i <- 0 until x){
+											randomMove
+										}
+									}
+									isDirty = true
+								}
+								Gdx.app.postRunnable(new Runnable {
+									override def run(): Unit = {
+										updateColors
+									}
+								})
+								
+							}
+						})
+
+					case 12 => 
+						SwingUtilities.invokeLater(new Runnable {
+							override def run(): Unit = {
+								val confirm = JOptionPane.showConfirmDialog(null, "Are you sure you want to reset?", "Reset?", JOptionPane.YES_NO_OPTION)
+								if (confirm == JOptionPane.YES_OPTION){
+									state.ResetState
+									isDirty = false
+									
+								
+								}
+								Gdx.app.postRunnable(new Runnable {
+									override def run(): Unit = {
+										updateColors
+									}
+								})
+							}
+						})
+
+
+					case 8 => 
+						val transformX = TranslationMat(HVec(Vector3.X, 1))
+
+						// hTransform.mulLeft(transformX)
+						hTransform.mul(transformX)
+						println(hTransform)
+						
+					
+					case _ => ()
+				}
+				
+			}
+			if (keycode == Keys.TAB){
+				show3rdLayer = !show3rdLayer
+			}
+			if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)
+				|| Gdx.input.isKeyPressed(Keys.CONTROL_RIGHT)
+				|| Gdx.input.isKeyPressed(Keys.SYM)){
+				keycode match {
+					case Keys.S => state.runFileChooser(true)
+					case Keys.O => state.runFileChooser(false)
+					case Keys.Z =>
+						if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT) 
+							|| Gdx.input.isKeyPressed(Keys.SHIFT_RIGHT)){
+							state.RedoMove
+						}else{
+							state.UndoMove
+						}
+						isDirty = true
+					case Keys.Y => state.RedoMove
+						isDirty = true
+					case _ => ()
+				}
+			}
+			true
 		}
+
+	}
+
+	val modalInputBlocker: InputProcessor = new InputAdapter {
+
+		
+
+		override def keyDown(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+		override def keyUp(k: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+		override def keyTyped(c: Char) = { Toolkit.getDefaultToolkit.beep(); true }
+		override def touchDown(x: Int, y: Int, p: Int, b: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+		override def touchUp(x: Int, y: Int, p: Int, b: Int) = { true }
+		override def touchDragged(x: Int, y: Int, p: Int) = { Toolkit.getDefaultToolkit.beep(); true }
+
+		
+	}
 	
 }
 

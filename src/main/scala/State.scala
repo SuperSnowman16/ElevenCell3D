@@ -8,6 +8,7 @@ import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
 import java.io.File
 import scala.collection.mutable.Stack
+import javax.swing.JOptionPane
 
 class State(cells:Array[Graph], main:Main) {
 
@@ -110,6 +111,12 @@ class State(cells:Array[Graph], main:Main) {
         }
     }
 
+    
+
+    
+
+
+
     def get(key:(Int, Set[Int])) : Int = stateMap.get(key).getOrElse(11)
 
     def runFileChooser(saveMode: Boolean): Unit = {
@@ -130,7 +137,7 @@ class State(cells:Array[Graph], main:Main) {
                             }
                         })
                     } else {
-                        Gdx.app.postRunnable(new Runnable {
+                        Gdx.app.postRunnable(new Runnable { 
                             override def run(): Unit = {
                                 loadState(file.getAbsolutePath)
                             }

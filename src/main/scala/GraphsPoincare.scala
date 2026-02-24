@@ -7,9 +7,7 @@ import Maths3D.Mobius.mobiusScalarMultiply
 import scala.collection.mutable.HashMap
 import Main.cellSize
 import Main.centerSize
-import Hyperboloid._
-
-object Graphs {
+object GraphsPoincare {
 
 		val (p,q) = (3,5)
 
@@ -17,31 +15,28 @@ object Graphs {
 		def tanharcosh(x:Double) : Float = (sqrt(x-1)/sqrt(x+1)).toFloat
 
 		def radii353 : (Float,Float,Float) = {
-			val f = acosh((sqrt(15)+sqrt(3))/4).toFloat
-			val e = acosh((3+sqrt(5))/(2*sqrt(3))).toFloat
-			val v = atanh(sqrt(16*sqrt(5) - 35)).toFloat
+			val f = tanharcosh((sqrt(15)+sqrt(3))/4)
+			val e = tanharcosh((3+sqrt(5))/(2*sqrt(3)))
+			val r3 = atanh(sqrt(16*sqrt(5) - 35))
+			val v = tanh(r3/2).toFloat
 
 			(f,e,v)
 		}
 
-		def firstVectors : (HVec3, HVec3, HVec3) = {
+		def firstVectors : (Vector3, Vector3, Vector3) = {
 				val (f,e,v) = radii353
-				val r1 = HVec(new Vector3(f, 0, 0), f)
+				val r1 = new Vector3(f, 0, 0)
 
 				val sinA = sqrt((3-sqrt(5))/6).toFloat
 				val cosA = sqrt((3+sqrt(5))/6).toFloat
 
-				val r2 = HVec(new Vector3(cosA, sinA, 0), e)
+				val r2 = new Vector3(e*cosA, e*sinA, 0)
 
 				val sinB = sqrt(2*(5 - sqrt(5))/15).toFloat
 				val cosB = sqrt((5 + 2*sqrt(5))/15).toFloat
 
-				val v3 = new Vector3(cosB,sinB,0).rotate(new Vector3(1,0,0), 60)
-				val r3 = HVec(v3, v)
+				val r3 = new Vector3(v*cosB,v*sinB,0).rotate(new Vector3(1,0,0), 60)
 
-				// println(r1.Q)
-				// println(r2.Q)
-				// println(r3.Q)
 
 				(r1,r2,r3)
 				
@@ -49,14 +44,11 @@ object Graphs {
 
 		
 
-		def orbit(axis:HVec3, vec:HVec3, n:Int) : (Array[HVec3]) = {
-			val ax = axis.to3D
-			((1 until n).map(x => vec.cpy.rotate(ax, -x*360f/n)).prepended(vec)).toArray
+		def orbit(axis:Vector3, vec:Vector3, n:Int) : (Array[Vector3]) = {
+			((1 until n).map(x => new Vector3(vec).rotate(axis, -x*360f/n)).prepended(vec)).toArray
 		}
 
-		
-
-		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:HVec3, var id:Int, val color:Int, val isMirrored:Boolean){
+		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:Vector3, var id:Int, val color:Int, val isMirrored:Boolean){
 
 			def mirror(faceID:Int) : Graph = {
 				val newFaces = new Array[Face](faces.size)
@@ -65,23 +57,21 @@ object Graphs {
 
 				val f0 = faces(faceID)
 				val vs = f0.verts.map(v => v.pt)
-				// val sphere = circumsphere(f0.pt, vs(0), vs(1), vs(2)).get
-				val mirroredMidpoint = hlerp(midpoint, f0.pt, 2)
-				val mirror = ReflectionMatrix(midpoint, mirroredMidpoint)
+				val sphere = circumsphere(f0.pt, vs(0), vs(1), vs(2)).get
 
 				for (i <- 0 until faces.length){
 					val f = faces(i)
-					val newF = new Face(f.id, f.p, f.oppCell, f.pt.mul(mirror))
+					val newF = new Face(f.id, f.p, f.oppCell, sphereMirror(f.pt, sphere))
 					newFaces(i) = newF
 				}
 				for (i <- 0 until edges.length){
 					val e = edges(i)
-					val newE = new Edge(e.id, e.pt.mul(mirror))
+					val newE = new Edge(e.id, sphere.inv(e.pt))
 					newEdges(i) = newE
 				}
 				for (i <- 0 until verts.length){
 					val v = verts(i)
-					val newV = new Vertex(v.id,v.q, v.pt.mul(mirror))
+					val newV = new Vertex(v.id,v.q, sphere.inv(v.pt))
 					newVerts(i) = newV
 				}
 
@@ -133,7 +123,7 @@ object Graphs {
 				for (i <- 0 until faces.length){
 					val f = faces(i)
 					val newF = newFaces(i)
-					val mirr = {x:HVec3 => x.mul(mirror)}
+					val mirr = sphereMirror(_, sphere)
 					newF.edgePts = f.edgePts.map(x => x.map(mirr))
 					newF.vertPts = f.vertPts.map(x => x.map(mirr))
 					newF.ridgePts = f.ridgePts.map(mirr)
@@ -142,15 +132,15 @@ object Graphs {
 
 				}
 
-				println(midpoint.mul(mirror))
 
-				new Graph(newFaces, newEdges, newVerts, midpoint.mul(mirror), faceID, f0.oppCell, !isMirrored)
+
+				new Graph(newFaces, newEdges, newVerts, sphericalInversion(midpoint, sphere).get, faceID, f0.oppCell, !isMirrored)
 			}
 
 			def getOpp(i:Int) : Int = (i+10)%20
 
 
-			def transform(tf: HVec3 => HVec3) {
+			def transform(tf: Vector3 => Vector3) {
 				for (face <- faces){
 					face.pt = tf(face.pt)
 					face.ridgePts = face.ridgePts.map(tf)
@@ -216,7 +206,7 @@ object Graphs {
 				newE.setFace(1, oppFace)
 				oppFace.setEdge(0, newE)
 				oppFace.setFace(0, face0)
-				oppFace.pt = face0.pt.cpy.rotate(newE.pt, 180)
+				oppFace.pt = new Vector3(face0.pt).rotate(newE.pt, 180)
 				
 			}
 
@@ -282,7 +272,7 @@ object Graphs {
 
 
 				
-			new Graph(faceArr, edgeArr, vertArr, new HVec3, 20, 10, false)
+			new Graph(faceArr, edgeArr, vertArr, new Vector3, 20, 10, false)
 		}
 
 		def connectVertex(vertex:Vertex, startFace:Face){
@@ -306,7 +296,7 @@ object Graphs {
 			while (startFace.vertexScore._1 < p){
 				val nextV = startFace.getVertex(firstV + offset)
 				if (nextV.pt == null){
-					nextV.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					nextV.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
 				}
 				offset += 1
 			}
@@ -324,7 +314,7 @@ object Graphs {
 					newE.setFace(0, startFace)
 					newE.setFace(1, startFace.getFace(id))
 					edgeList += newE
-					newE.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					newE.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
 					startFace.setEdge(id, newE)
 					val nbFace = startFace.getFace(id)
 					nbFace.setEdge(nbFace.findFace(startFace), newE)
@@ -340,7 +330,7 @@ object Graphs {
 			while (startFace.faceScore._1 < p){
 				val nextF = startFace.getFace(firstF + offset)
 				if (nextF.pt == null){
-					nextF.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					nextF.pt = new Vector3(pt0).rotate(startFace.pt, -offset*120)
 				}
 				offset += 1
 			}
@@ -349,7 +339,7 @@ object Graphs {
 
 		
 
-		class Node(var pt:HVec3, var id:Int, val size:Int){
+		class Node(var pt:Vector3, var id:Int, val size:Int){
 
 			val faces = new Array[Face](size)
 
@@ -411,54 +401,54 @@ object Graphs {
 			
 		
 
-		class Face(id:Int, val p:Int, var oppCell:Int, vec:HVec3 = null) extends Node(vec, id, p){
+		class Face(id:Int, val p:Int, var oppCell:Int, vec:Vector3 = null) extends Node(vec, id, p){
 
 			// val thisFace = this
 
 			val verts = new Array[Vertex](size)
 			val edges = new Array[Edge](size)
 			
-			var centerMidpt = new HVec3
-			var centerPts = new Array[HVec3](size*2)
-			var ridgePts = new Array[HVec3](size*2)
-			var edgePts = Array.ofDim[HVec3](size,6)
-			var vertPts = Array.ofDim[HVec3](size,4)
+			var centerMidpt = new Vector3
+			var centerPts = new Array[Vector3](size*2)
+			var ridgePts = new Array[Vector3](size*2)
+			var edgePts = Array.ofDim[Vector3](size,6)
+			var vertPts = Array.ofDim[Vector3](size,4)
 
 			def generateStickers {
-				val ridgeMidpts = new Array[HVec3](size)
-				val edgeMidpts = Array.ofDim[HVec3](size,2)
+				val ridgeMidpts = new Array[Vector3](size)
+				val edgeMidpts = Array.ofDim[Vector3](size,2)
 
 				for (i <- 0 until size){
-					ridgeMidpts(i) = hlerp(verts(i).pt, pt, cutDepth*.75f)
-					ridgePts(2*i) = hlerp(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
-					edgeMidpts(i)(0) = hlerp(verts(i).pt, edges(i).pt, cutDepth*.5f)
-					edgeMidpts(i)(1) = hlerp(getVertex(i+1).pt, edges(i).pt, cutDepth*.5f)
+					ridgeMidpts(i) = interpolate(verts(i).pt, pt, cutDepth*.75f)
+					ridgePts(2*i) = interpolate(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
+					edgeMidpts(i)(0) = interpolate(verts(i).pt, edges(i).pt, cutDepth*.5)
+					edgeMidpts(i)(1) = interpolate(getVertex(i+1).pt, edges(i).pt, cutDepth*.5)
 				}
 
 				for (i <- 0 until size){
-					ridgePts(2*i+1) = hlerp(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
+					ridgePts(2*i+1) = interpolate(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
 					val (e,v) = (edges(i).pt, verts(i).pt)
 					vertPts(i)(0) = v.cpy()
-					vertPts(i)(1) = hlerp(v, edgeMidpts(i)(0), stickerSize)
-					vertPts(i)(2) = hlerp(v, ridgeMidpts(i), stickerSize)
-					vertPts(i)(3) = hlerp(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
+					vertPts(i)(1) = interpolate(v, edgeMidpts(i)(0), stickerSize)
+					vertPts(i)(2) = interpolate(v, ridgeMidpts(i), stickerSize)
+					vertPts(i)(3) = interpolate(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
 				}
 
 				for (i <- 0 until size){
 					val (e,v, v2) = (edges(i).pt, verts(i).pt, verts((i+1)%size).pt)
 
 					edgePts(i)(0) = e.cpy()
-					edgePts(i)(1) = hlerp(v2, edgeMidpts(i)(1), 1/stickerSize)
-					edgePts(i)(2) = hlerp(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(4) = hlerp(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(5) = hlerp(v, edgeMidpts(i)(0), 1/stickerSize)
+					edgePts(i)(1) = interpolate(v2, edgeMidpts(i)(1), 1/stickerSize)
+					edgePts(i)(2) = interpolate(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
+					edgePts(i)(4) = interpolate(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
+					edgePts(i)(5) = interpolate(v, edgeMidpts(i)(0), 1/stickerSize)
 
-					edgePts(i)(3) = hlerp(edgePts(i)(2), edgePts(i)(4))
+					edgePts(i)(3) = interpolate(edgePts(i)(2), edgePts(i)(4))
 
 				}
 
 				val (midpt, pts) = getPolygon
-				val f = {x:HVec3 => x.hscl(centerSize)} // mobiusScalarMultiply(centerSize, _)
+				val f = mobiusScalarMultiply(centerSize, _)
 				centerMidpt = f(midpt)
 				centerPts = pts.map(f)
 
@@ -578,13 +568,13 @@ object Graphs {
 			}
 
 
-			def getPolygon : (HVec3, Array[HVec3]) = {
-				val arr = new Array[HVec3](p*2)
+			def getPolygon : (Vector3, Array[Vector3]) = {
+				val arr = new Array[Vector3](p*2)
 				for (i <- 0 until p){
 					arr(2*i) = verts(i).pt
 					arr(2*i+1) = edges(i).pt
-					// arr(2*i+1) = hlerp(arr(2*i), arr(2*i+2))
-					// arr(2*i+3) = hlerp(arr(2*i+2), arr((2*i+2)%(p*4)))
+					// arr(2*i+1) = interpolate(arr(2*i), arr(2*i+2))
+					// arr(2*i+3) = interpolate(arr(2*i+2), arr((2*i+2)%(p*4)))
 				}
 
 				return (pt, arr)
@@ -595,7 +585,7 @@ object Graphs {
 
 			
 
-		class Edge(i:Int = -1, vec:HVec3 = null) extends Node(vec, i, 2){
+		class Edge(i:Int = -1, vec:Vector3 = null) extends Node(vec, i, 2){
 			override def TwistFn(dir:Int) : (Int => Int) = {
 
 				val map = new HashMap[Int,Int]
@@ -617,7 +607,7 @@ object Graphs {
 			override def toString(): String = "e"+id
 		}
 
-		class Vertex(i:Int = -1, val q:Int, vec:HVec3 = null) extends Node(vec, i, q){
+		class Vertex(i:Int = -1, val q:Int, vec:Vector3 = null) extends Node(vec, i, q){
 			override def TwistFn(dir:Int) : (Int => Int) = {
 
 				val map = new HashMap[Int,Int]

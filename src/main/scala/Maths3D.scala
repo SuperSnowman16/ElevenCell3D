@@ -79,6 +79,11 @@ object Maths3D {
     }
 	
     def acosh(x:Double) : Double = {
+		if (x < 1){
+			println("acosh")
+			println(x)
+			return 0
+		}
         require(x >= 1)
         log(x + sqrt(x*x -1))
     } 
