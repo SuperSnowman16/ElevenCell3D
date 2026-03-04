@@ -117,7 +117,7 @@ object Permutations {
 
         val fp = (m1*m2*m3).fixedPts
 
-        println("fixed pts = " + fp)
+        // println("fixed pts = " + fp)
 
     }
 

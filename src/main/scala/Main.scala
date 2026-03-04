@@ -55,6 +55,8 @@ import Hyperboloid._
 import CellMeshes.CellMesh
 import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
+import LorentzPolar.polarProject
+import scala.collection.mutable.ArrayBuffer
 
 
 object Main {
@@ -74,7 +76,7 @@ object Main {
 	
 	def main(args: Array[String]): Unit = {
 
-		println(new Vector3(1,0,0).setLength(-2))
+		// println(new Vector3(1,0,0).setLength(-2))
 
 
 		val config = new Lwjgl3ApplicationConfiguration()
@@ -153,16 +155,15 @@ class Main extends ApplicationAdapter {
 	val faceArr = graph.faces
 
 	
-	var graphs = new Array[Graph](21)
-
+	var graphs = ArrayBuffer[Graph](graph)
 	
 	for (i <- 0 until 20){
 		val graph2 = graph.mirror(i)
 		// val offset = graph2.midpoint.scl(cellSpacing)
 		// graph2.transform(_.scl(outerCellScaling).add(offset))
-		graphs(i+1) = graph2
+		graphs.addOne(graph2)
 	}
-	graphs(0) = graph
+	
 
 	// graphs = Array(graph, graphs(0)) 
 
@@ -181,6 +182,19 @@ class Main extends ApplicationAdapter {
 
 	graphs = graphs ++ layer3
 
+
+	val layer4 = new ArrayBuffer[Graph]
+	for (i <- 21 until graphs.length){
+		val g = graphs(i)
+		for (i <- 0 until 20){
+			val newMidpt = hlerp(g.midpoint, g.faces(i).pt, 2f) 
+			val minDist = graphs.map(g => hdist(g.midpoint, newMidpt)).min
+			if (minDist > .5){
+				graphs.addOne(g.mirror(i))
+			}
+		}
+	}
+	
 	graphs.foreach(g => g.transform(x => hlerp(g.midpoint, x, cellSize)))
 
 	// graphs.foreach(g => g.transform(PoincareToOrthographic(_)))
@@ -198,7 +212,7 @@ class Main extends ApplicationAdapter {
 	val cellMeshes = new Array[CellMesh](graphs.length)
 
 
-	val cells = graphs.take(11).sortBy(g => g.color)
+	val cells = graphs.take(11).sortBy(g => g.color).toArray
 
 	val state = new State(cells, this)
 
@@ -239,7 +253,7 @@ class Main extends ApplicationAdapter {
 
 		val twistStr = "1t"+graphID+piece.toString()
 
-		println(color + " " + cell.color)
+		// println(color + " " + cell.color)
 
 		// state.StrToMove(twistStr)
 
@@ -293,7 +307,7 @@ class Main extends ApplicationAdapter {
 		// if (id == 20){
 		// 	println(20)
 		// }
-		println(id)
+		// println(id)
 
 		val map = new HashMap[Int, Int]()
 
@@ -435,10 +449,10 @@ class Main extends ApplicationAdapter {
 		val (minCell, minIndex) = cellMeshes.take(cellNum).zipWithIndex.minBy(c => c._1.midpointDist(hTransform))
 		if (minCell != cellMeshes(0)){
 			val midGraph = graphs(minIndex)
-			print(midGraph.permutation)
+			// print(midGraph.permutation)
 			state.Rotate(x => midGraph.permutation.inv(x))
 			hTransform = hTransform.mul(midGraph.transformation)
-			// hTransform = normalizeHMatrix(hTransform)
+			hTransform = polarProject(hTransform)
 		}
 
 
@@ -817,7 +831,7 @@ class Main extends ApplicationAdapter {
 								val (cell, _) = parseMeshID(hit.faceId)
 								val m = cellMeshes(cell).midpoint(hTransform)
 								hTransform.mulLeft(TranslationMat(-m))
-								hTransform = normalizeHMatrix(hTransform)
+								hTransform = polarProject(hTransform)
 
 								// updateColors
 								0

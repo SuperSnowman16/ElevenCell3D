@@ -32,6 +32,7 @@ object Graphs {
 
 		def firstVectors : (HVec3, HVec3, HVec3) = {
 				val (f,e,v) = radii353
+				println(radii353)
 				val r1 = HVec(new Vector3(f, 0, 0), f)
 
 				val sinA = sqrt((3-sqrt(5))/6).toFloat
@@ -175,7 +176,7 @@ object Graphs {
 				
 				edges.foreach(n => n.pt = tf(n.pt))
 				verts.foreach(n => n.pt = tf(n.pt))
-				midpoint = tf(midpoint)
+				// midpoint = tf(midpoint)
 
 			}
 			
@@ -309,7 +310,7 @@ object Graphs {
 
 			faceArr.foreach(_.generateStickers)
 
-			println(faceArr.map(f => f.faceMirror).mkString("\n"))
+			// println(faceArr.map(f => f.faceMirror).mkString("\n"))
 				
 			new Graph(faceArr, edgeArr, vertArr, new HVec3, 20, 0, false, IdMatrix, Cell11.id)
 		}
