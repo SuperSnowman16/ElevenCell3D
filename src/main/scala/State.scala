@@ -90,7 +90,7 @@ class State(cells:Array[Graph], main:Main) {
             stateMap.addOne((newCell,newGrip),color)
         }
         
-        main.updateColors
+        // main.updateColors
 
         
     }
@@ -99,7 +99,7 @@ class State(cells:Array[Graph], main:Main) {
         val colorLocations = (0 to 10).map(x => stateMap.get((x, Set(x))).get).toArray
         for ((k,v) <- stateMap){
             if (k._1 != colorLocations(v)){
-                println("" + k + " " + v + " " + colorLocations(v))
+                // println("" + k + " " + v + " " + colorLocations(v))
             }
         }
         stateMap.map(x => colorLocations(x._1._1) == x._2).reduce(_ && _)
@@ -155,6 +155,7 @@ class State(cells:Array[Graph], main:Main) {
         s match {
             case s"${dir}t${twist}" => 
                 val (cell, node) = main.parseMeshID("c"+twist)
+        
                 Twist(main.graphs(cell).color, node.TwistFn(dir.toInt))
 
             case s"${dir}r${rotation}" => 
@@ -162,7 +163,8 @@ class State(cells:Array[Graph], main:Main) {
                 Rotate(node.TwistFn(dir.toInt))
 
             case s"c${centerCell}" => 
-                Rotate(main.CenterCell(centerCell.toInt))
+                var cell = centerCell.toInt
+                Rotate(main.CenterCell(cell))
 
             case _ => 
                 println("invalid string ("+s+")")
@@ -177,13 +179,16 @@ class State(cells:Array[Graph], main:Main) {
         s match {
             case s"${dir}t${twist}" => 
                 val (cell, node) = main.parseMeshID("c"+twist)
+                println("twist")
                 Twist(main.graphs(cell).color, node.TwistFn(-dir.toInt))
 
             case s"${dir}r${rotation}" => 
                 val (cell, node) = main.parseMeshID("c"+rotation)
+                println("rotate")
                 Rotate(node.TwistFn(-dir.toInt))
 
             case s"c${centerCell}" => 
+                println("center")
                 Rotate(main.CenterCell(centerCell.toInt))
 
             case _ => 
@@ -193,14 +198,42 @@ class State(cells:Array[Graph], main:Main) {
     }
     
 
-    
-
-
     def saveState(path: String): Unit = {
         val handle = Gdx.files.absolute(path)
         handle.writeString(scrambleList.mkString(",")+";"+moveList.mkString(","), false)
         println(s"Saved to $path")
         Main.isDirty = false
+    }
+
+    def oldCellConverter(cellStr:String) : Int = {
+        val cell = cellStr.toInt
+        println("input" + cell)
+        if (cell == 20){
+            println("output" + 0)
+            return 0
+        }
+        if (cell < 20){
+            println("output" + (cell + 1))
+            return (cell + 1)
+        }
+        println("output" + cell)
+        return cell
+    }
+
+    def oldMoveParser(move:String) : String = {
+        move match {
+            case s"c${centerCell}" => 
+                return s"c${oldCellConverter(centerCell)}"
+
+            case _: String => 
+                
+                val nums = move.split("[tcmfev]")
+                println(nums.mkString(","))
+                val letters = move.filter(_.isLetter)
+                nums(1) = oldCellConverter(nums(1)).toString()
+                val s = nums(0) + letters(0) + nums(1) + letters(1) + nums(2)
+                return s
+        }
     }
 
     def loadState(path: String): Unit = {
@@ -215,14 +248,18 @@ class State(cells:Array[Graph], main:Main) {
                         // println(moves)
                         if (scramble.nonEmpty){
                             for (move <- scramble.split(",")){
-                                StrToMove(move) 
-                                scrambleList.addOne(move) 
+                                StrToMove(move)
+                                scrambleList.addOne(move)
+                                // StrToMove(oldMoveParser(move))
+                                // scrambleList.addOne(oldMoveParser(move))
                             }
                         }
                         if (moves.nonEmpty){
                             for (move <- moves.split(",")){
                                 StrToMove(move)
                                 moveList.addOne(move)
+                                // StrToMove(oldMoveParser(move))
+                                // moveList.addOne(oldMoveParser(move))
                             }
                         }
                         println("Scramble: " + scrambleList.length + " moves")
@@ -238,8 +275,8 @@ class State(cells:Array[Graph], main:Main) {
 
                 Gdx.app.postRunnable(new Runnable {
                     override def run(): Unit = {
-                        main.updateColors
-                        println(stateMap.mkString("\n"))
+                        // main.updateColors
+                        // println(stateMap.mkString("\n"))
                         print(isSolved)
                     }
                 })
@@ -266,7 +303,7 @@ class State(cells:Array[Graph], main:Main) {
             case Some(str) => 
                 moveList.dropRightInPlace(1)
                 StrUndo(str) 
-                main.updateColors   
+                // main.updateColors   
         }
         // println("undo:")
         // println(moveList)
@@ -278,7 +315,7 @@ class State(cells:Array[Graph], main:Main) {
             val str = undoStack.pop()
             StrToMove(str)
             moveList.addOne(str)
-            main.updateColors
+            // main.updateColors
         }
         // println("redo:")
         // println(moveList)

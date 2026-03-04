@@ -8,8 +8,14 @@ import scala.collection.mutable.HashMap
 import Main.cellSize
 import Main.centerSize
 import Hyperboloid._
+import com.badlogic.gdx.math.Matrix4
+import Permutations.Permutation
+import Permutations.Cell11
 
 object Graphs {
+
+
+
 
 		val (p,q) = (3,5)
 
@@ -56,7 +62,7 @@ object Graphs {
 
 		
 
-		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:HVec3, var id:Int, val color:Int, val isMirrored:Boolean){
+		class Graph(val faces:Array[Face], val edges:Array[Edge], val verts:Array[Vertex], var midpoint:HVec3, var id:Int, val color:Int, val isMirrored:Boolean, val transformation:Matrix4, val permutation:Permutation){
 
 			def mirror(faceID:Int) : Graph = {
 				val newFaces = new Array[Face](faces.size)
@@ -68,6 +74,7 @@ object Graphs {
 				// val sphere = circumsphere(f0.pt, vs(0), vs(1), vs(2)).get
 				val mirroredMidpoint = hlerp(midpoint, f0.pt, 2)
 				val mirror = ReflectionMatrix(midpoint, mirroredMidpoint)
+				val mirrorPerm = f0.faceMirror
 
 				for (i <- 0 until faces.length){
 					val f = faces(i)
@@ -100,6 +107,7 @@ object Graphs {
 						newF.edges(j) = newEdges(f.edges(j).id)
 						newF.verts(j) = newVerts(f.verts(j).id)
 					}
+					newF.twistPerm = mirrorPerm * f.twistPerm * mirrorPerm
 				}
 
 				for (i <- 0 until edges.length){
@@ -108,6 +116,7 @@ object Graphs {
 					for (j <- 0 until e.size){
 						newE.faces(j) = newFaces(e.faces(j).id)
 					}
+					newE.twistPerm = mirrorPerm * e.twistPerm * mirrorPerm
 				}
 
 				for (i <- 0 until verts.length){
@@ -116,19 +125,20 @@ object Graphs {
 					for (j <- 0 until v.q){
 						newV.faces(j) = newFaces(v.faces(j).id)
 					}
+					newV.twistPerm = mirrorPerm * v.twistPerm * mirrorPerm
 				}
 
 				val newF0 = newFaces(faceID)
-				for (v <- newFaces(faceID).verts){
-					val f1 = v.getOffsetFace(newF0, 2)
-					val f2 = v.getOffsetFace(newF0, -2)
-					val temp = f1.oppCell
-					f1.oppCell = f2.oppCell
-					f2.oppCell = temp 
-					newFaces(getOpp(f1.id)).oppCell = f1.oppCell
-					newFaces(getOpp(f2.id)).oppCell = f2.oppCell
+				// for (v <- newFaces(faceID).verts){
+				// 	val f1 = v.getOffsetFace(newF0, 2)
+				// 	val f2 = v.getOffsetFace(newF0, -2)
+				// 	val temp = f1.oppCell
+				// 	f1.oppCell = f2.oppCell
+				// 	f2.oppCell = temp 
+				// 	newFaces(getOpp(f1.id)).oppCell = f1.oppCell
+				// 	newFaces(getOpp(f2.id)).oppCell = f2.oppCell
 
-				}
+				// }
 
 				for (i <- 0 until faces.length){
 					val f = faces(i)
@@ -140,11 +150,14 @@ object Graphs {
 					newF.centerPts = f.centerPts.map(mirr)
 					newF.centerMidpt = mirr(f.centerMidpt)
 
+					newF.faceMirror = mirrorPerm * f.faceMirror * mirrorPerm
+					newF.oppCell = mirrorPerm(f.oppCell)
+
 				}
 
 				println(midpoint.mul(mirror))
 
-				new Graph(newFaces, newEdges, newVerts, midpoint.mul(mirror), faceID, f0.oppCell, !isMirrored)
+				new Graph(newFaces, newEdges, newVerts, midpoint.mul(mirror), faceID, mirrorPerm(color), !isMirrored, transformation.cpy.mulLeft(mirror), permutation * mirrorPerm)
 			}
 
 			def getOpp(i:Int) : Int = (i+10)%20
@@ -185,11 +198,19 @@ object Graphs {
 			val edgeList : ListBuffer[Edge] = new ListBuffer()
 			val vertList : ListBuffer[Vertex] = new ListBuffer()
 
-			val face0 = new Face(0, p, 0)
+			val faceMirror0 = Cell11.m4 
+
+			val face0 = new Face(0, p, faceMirror0(0))
 			face0.pt = f1
 			faceArr(0) = face0
+
+			val facePerm0 = Cell11.f0
+			face0.twistPerm = facePerm0
+
+			face0.faceMirror = Cell11.m4
+			
 			for (i <- 1 until 20){
-				faceArr(i) = new Face(i, p, i%10)
+				faceArr(i) = new Face(i, p, -1)
 			}
 			
 
@@ -217,6 +238,14 @@ object Graphs {
 				oppFace.setEdge(0, newE)
 				oppFace.setFace(0, face0)
 				oppFace.pt = face0.pt.cpy.rotate(newE.pt, 180)
+
+				val rotPerm = facePerm0^i
+				val edgePerm = rotPerm * Cell11.e0 * rotPerm.inv
+				newE.twistPerm = edgePerm
+				newV.twistPerm = rotPerm * Cell11.v0 * rotPerm.inv
+				oppFace.faceMirror = edgePerm * face0.faceMirror * edgePerm
+				oppFace.twistPerm = edgePerm * face0.twistPerm * edgePerm 
+				oppFace.oppCell = edgePerm(face0.oppCell)
 				
 			}
 
@@ -280,9 +309,9 @@ object Graphs {
 
 			faceArr.foreach(_.generateStickers)
 
-
+			println(faceArr.map(f => f.faceMirror).mkString("\n"))
 				
-			new Graph(faceArr, edgeArr, vertArr, new HVec3, 20, 10, false)
+			new Graph(faceArr, edgeArr, vertArr, new HVec3, 20, 0, false, IdMatrix, Cell11.id)
 		}
 
 		def connectVertex(vertex:Vertex, startFace:Face){
@@ -300,31 +329,39 @@ object Graphs {
 		}
 
 		def orbitVertex(startFace:Face){
-			val firstV = startFace.vertexScore._2
-			val pt0 = startFace.getVertex(firstV).pt
+			val vID = startFace.vertexScore._2
+			val v0 = startFace.getVertex(vID)
+			val pt0 = v0.pt
+			val perm0 = v0.twistPerm
 			var offset = 1
 			while (startFace.vertexScore._1 < p){
-				val nextV = startFace.getVertex(firstV + offset)
+				val offsetPerm = startFace.twistPerm^offset
+				val nextV = startFace.getVertex(vID + offset)
 				if (nextV.pt == null){
 					nextV.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					nextV.twistPerm = offsetPerm * perm0 * offsetPerm.inv
 				}
 				offset += 1
 			}
 		}
 
 		def orbitEdge(startFace:Face, edgeList:ListBuffer[Edge]){
-			val firstE = startFace.edgeScore._2
-			val pt0 = startFace.getEdge(firstE).pt
+			val eID = startFace.edgeScore._2
+			val e0 = startFace.getEdge(eID)
+			val perm0 = e0.twistPerm
+			val pt0 = startFace.getEdge(eID).pt
 			var offset = 1
 			while (startFace.edgeScore._1 < p){
-				val id = firstE + offset
+				val id = eID + offset
 				val nextE = startFace.getEdge(id)
 				if (nextE == null){
+					val offsetPerm = startFace.twistPerm^offset
 					val newE = new Edge
 					newE.setFace(0, startFace)
 					newE.setFace(1, startFace.getFace(id))
 					edgeList += newE
 					newE.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					newE.twistPerm = offsetPerm * perm0 * offsetPerm.inv
 					startFace.setEdge(id, newE)
 					val nbFace = startFace.getFace(id)
 					nbFace.setEdge(nbFace.findFace(startFace), newE)
@@ -335,12 +372,22 @@ object Graphs {
 
 		def orbitFace(startFace:Face){
 			val firstF = startFace.faceScore._2
-			val pt0 = startFace.getFace(firstF).pt
+			val f0 = startFace.getFace(firstF)
+			val pt0 = f0.pt
+			val twistPerm0 = f0.twistPerm
+			val faceMirror0 = f0.faceMirror
+			val oppFace0 = f0.oppCell
+
 			var offset = 1
 			while (startFace.faceScore._1 < p){
 				val nextF = startFace.getFace(firstF + offset)
 				if (nextF.pt == null){
 					nextF.pt = pt0.cpy.rotate(startFace.pt, -offset*120)
+					val offsetPerm = startFace.twistPerm ^ offset
+					nextF.twistPerm = offsetPerm * twistPerm0 * offsetPerm.inv
+					nextF.faceMirror = offsetPerm * faceMirror0 * offsetPerm.inv
+					nextF.oppCell = offsetPerm(f0.oppCell)
+
 				}
 				offset += 1
 			}
@@ -352,6 +399,8 @@ object Graphs {
 		class Node(var pt:HVec3, var id:Int, val size:Int){
 
 			val faces = new Array[Face](size)
+
+			var twistPerm = Permutations.Cell11.id
 
 			override def toString(): String = "n"+id
 
@@ -412,6 +461,8 @@ object Graphs {
 		
 
 		class Face(id:Int, val p:Int, var oppCell:Int, vec:HVec3 = null) extends Node(vec, id, p){
+
+			var faceMirror = Permutations.Cell11.id
 
 			// val thisFace = this
 

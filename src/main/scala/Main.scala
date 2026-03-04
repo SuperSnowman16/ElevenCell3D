@@ -52,6 +52,9 @@ import java.awt.Toolkit
 import javax.swing.JDialog
 import java.util.concurrent.Executors
 import Hyperboloid._
+import CellMeshes.CellMesh
+import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader
+import com.badlogic.gdx.graphics.glutils.ShaderProgram
 
 
 object Main {
@@ -66,10 +69,14 @@ object Main {
 	val cutDepth = .7f
 	val cellSize = .6f
 	val centerSize = .5f
-	val transparency = .8f
+	val transparency = .5f
 	// val outerCellScaling = 1f
 	
 	def main(args: Array[String]): Unit = {
+
+		println(new Vector3(1,0,0).setLength(-2))
+
+
 		val config = new Lwjgl3ApplicationConfiguration()
 		config.setTitle("11 Cell")
 		config.setWindowedMode(800, 600)
@@ -85,6 +92,8 @@ object Main {
 			}
 		})
 		new Lwjgl3Application(app, config)
+
+
 	}
 }
 
@@ -93,6 +102,7 @@ class Main extends ApplicationAdapter {
 	private var environment: Environment = _
 	private var camera: PerspectiveCamera = _
 	private var camController: CameraInputController = _
+	var shader : ShaderProgram = _
 
 	var viewport : FitViewport = _
 
@@ -108,23 +118,23 @@ class Main extends ApplicationAdapter {
 	var hTransform = IdMatrix
 
 	val M = TranslationMat(HVec(Vector3.X, 1))
-	hTransform = M.mul(M.cpy.inv)
+	// hTransform = M.mul(M.cpy.inv)
 
 	var leftClickDown = false
 	var rightClickDown = false
 	
 	val colors = Array(
-		AWTColor.decode("#ffffff"),
-		AWTColor.decode("#ff0000"),
-		AWTColor.decode("#ff7b00"),
-		AWTColor.decode("#ffff00"),
-		AWTColor.decode("#00ff00"),
-		AWTColor.decode("#00ffff"),
-		AWTColor.decode("#0080ff"),
-		AWTColor.decode("#0000ff"),
-		AWTColor.decode("#9900ff"),
-		AWTColor.decode("#ff00ff"),
 		AWTColor.decode("#686868"),
+		AWTColor.decode("#ffffff"),
+		AWTColor.decode("#ff00ff"),
+		AWTColor.decode("#9900ff"),
+		AWTColor.decode("#ff0000"),
+		AWTColor.decode("#00ff00"),
+		AWTColor.decode("#0080ff"),
+		AWTColor.decode("#ff7b00"),
+		AWTColor.decode("#0000ff"),
+		AWTColor.decode("#ffff00"),
+		AWTColor.decode("#00ffff"),
 		AWTColor.decode("#000000")
 		
 	).map(toGdxColor) 
@@ -150,9 +160,9 @@ class Main extends ApplicationAdapter {
 		val graph2 = graph.mirror(i)
 		// val offset = graph2.midpoint.scl(cellSpacing)
 		// graph2.transform(_.scl(outerCellScaling).add(offset))
-		graphs(i) = graph2
+		graphs(i+1) = graph2
 	}
-	graphs(20) = graph
+	graphs(0) = graph
 
 	// graphs = Array(graph, graphs(0)) 
 
@@ -185,10 +195,10 @@ class Main extends ApplicationAdapter {
 
 	instances = new Array[ModelInstance](graphs.length)
 
-	val cellMeshes = new Array[Mesh](graphs.length)
+	val cellMeshes = new Array[CellMesh](graphs.length)
 
 
-	val cells = graphs.take(10).appended(graph)
+	val cells = graphs.take(11).sortBy(g => g.color)
 
 	val state = new State(cells, this)
 
@@ -218,10 +228,7 @@ class Main extends ApplicationAdapter {
 	def randomMove {
 		val color = Random.nextInt(11)
 		val cell = cells(color)
-		var graphID = color
-		if (color == 10){
-			graphID = 20
-		}
+		var graphID = cell.id
 		val twistType = Random.nextInt(3)
 		val pieces = twistType match {
 			case 0 => cell.faces
@@ -232,6 +239,9 @@ class Main extends ApplicationAdapter {
 
 		val twistStr = "1t"+graphID+piece.toString()
 
+		println(color + " " + cell.color)
+
+		// state.StrToMove(twistStr)
 
 		
 		state.Twist(color, piece.TwistFn(1))
@@ -249,6 +259,8 @@ class Main extends ApplicationAdapter {
 	// 		part.material = new com.badlogic.gdx.graphics.g3d.Material(part.material) // clone
 	// 	}
 	// }
+
+	
 
 
 	def parseMeshID(id: String): (Int, Node) = id match {
@@ -278,16 +290,25 @@ class Main extends ApplicationAdapter {
 
 	def CenterCell(id:Int) : Int => Int = {
 
+		// if (id == 20){
+		// 	println(20)
+		// }
+		println(id)
 
 		val map = new HashMap[Int, Int]()
 
-		val mid = graphs(20)
+		val mid = graphs(0)
 		val newMid = graphs(id)
 		map.addOne(mid.color, newMid.color)
 		map.addOne(newMid.color, mid.color)
 
 
-		val f0 = mid.faces(id) 
+		val f0 = mid.faces(id-1) 
+		if (f0.oppCell != newMid.color){
+			println("CellCenter Error")
+		}
+
+		
 		for (v <- f0.verts){
 			val f1 = v.getOffsetFace(f0, 2)
 			val f2 = v.getOffsetFace(f0, -2)
@@ -295,80 +316,9 @@ class Main extends ApplicationAdapter {
 			map.addOne(f2.oppCell, f1.oppCell)
 		}
 
-		return x => map.get(x) match {
-			case Some(value) => value
-			case None => x
-		}
+		return x => map.getOrElse(x, x) 
 
 	}
-
-	
-
-	def updateColors {
-		// for ((k,v) <- materialMap){
-		// 	val color = state.get(meshIDtoGrip(k))
-		// 	// println(color)
-		// 	val d = v.get(ColorAttribute.Diffuse).asInstanceOf[ColorAttribute]
-		// 	d.color.set(color)
-		// }
-
-		for {
-			instance <- instances
-			node <- instance.nodes.asScala
-			part <- node.parts.asScala
-			if part.meshPart.id != "lines"
-		} {
-			val id = part.meshPart.id
-			val mat = part.material
-			val newColor = colors(state.get(meshIDtoGrip(id)))
-		
-			// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
-			val attr = mat.get(ColorAttribute.Diffuse)
-			
-			if (attr == null) {
-			// create and add a ColorAttribute (preserves any blending attribute already present)
-			mat.set(ColorAttribute.createDiffuse(newColor))
-			// println(s"Added new diffuse attribute to part '$faceId'")
-			} else {
-			// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
-			val ca = attr.asInstanceOf[ColorAttribute]
-			// println(s"Before update for '$faceId': ${ca.color}")
-			ca.color.set(newColor)
-			// println(s"After update for '$faceId': ${ca.color}")
-			}
-		}
-
-	}
-
-	// def updateFaceColorByPart(faceId: String, newColor: Color): Unit = {
-	// 	var found = false
-	// 	for {
-	// 		instance <- instances
-	// 		node <- instance.nodes.asScala
-	// 		part <- node.parts.asScala
-	// 		// if part.meshPart.id == faceId
-	// 	} {
-	// 		found = true
-	// 		val mat = part.material
-		
-	// 		// Ensure material actually has a ColorAttribute.Diffuse — if not, add one.
-	// 		val attr = mat.get(ColorAttribute.Diffuse)
-	// 		if (attr == null) {
-	// 		// create and add a ColorAttribute (preserves any blending attribute already present)
-	// 		mat.set(ColorAttribute.createDiffuse(newColor))
-	// 		println(s"Added new diffuse attribute to part '$faceId'")
-	// 		} else {
-	// 		// mutate the existing ColorAttribute so we don't replace BlendingAttribute etc.
-	// 		val ca = attr.asInstanceOf[ColorAttribute]
-	// 		println(s"Before update for '$faceId': ${ca.color}")
-	// 		ca.color.set(newColor)
-	// 		println(s"After update for '$faceId': ${ca.color}")
-	// 		}
-	// 	}
-
-	// 	if (!found) println(s"updateFaceColorByPart: no part found with id '$faceId'")
-	// }
-
 
 
 	override def create(): Unit = {
@@ -381,8 +331,8 @@ class Main extends ApplicationAdapter {
 		camera.far = 100f
 		camera.update()
 
-		// viewport = new FitViewport(800,600,camera)
-		// viewport.apply()
+		viewport = new FitViewport(800,600,camera)
+		viewport.apply()
 
 		// camController = new CameraInputController(camera)
 		// camController.rotateAngle = -360
@@ -399,133 +349,52 @@ class Main extends ApplicationAdapter {
 		// environment.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.3f, 0.3f, 0.3f, 1f))
 		environment.add(new DirectionalLight().set(1f-lightIntensity, 1f-lightIntensity, 1f-lightIntensity, 0f, 0f, -1f))
 
-		modelBatch = new ModelBatch()
 
-		// Build cube from triangles
-		val builder = new ModelBuilder()
-		builder.begin()
-		// val material = new Material(
-		// 	new BlendingAttribute(true, 1f)
-		// )
-		// material.set(IntAttribute.createCullFace(GL20.GL_NONE))
-		val attrs = Usage.Position | Usage.Normal 
-		
+		// val g = graphs(20)
+		// val cell = g.color
 
-		val material2 = new Material(ColorAttribute.createDiffuse(Color.BLACK))
-
-		var meshLineBuilder = builder.part(
-			"lines",
-			GL20.GL_LINES,
-			Usage.Position,
-			material2
-		)
-
-		
-		
-
-		
-
-		// Draws a polygon connecting the first point to each subsequent consecutive pair with a triangle 
-		def DrawPolygon(hpts:Array[HVec3], color:Color, name:String){ 
-			val pts = hpts.map(_.mul(hTransform).toPoincare)
-			val mat = materialMap.get(name) match {
-				case Some(value) => value
-				case None => 
-					val m = new Material(
-					ColorAttribute.createDiffuse(color),
-					new BlendingAttribute(true, 1f)
-					// new DepthTestAttribute(false)
-				)
-				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
-				materialMap.addOne(name, m)
-				m
-			}
-			val part = builder.part(name, GL20.GL_TRIANGLES, attrs, mat)
-			// part.setColor(color)
-			val p = pts(0)
-				meshLineBuilder.line(p, pts(1))
-				meshLineBuilder.line(p, pts.last)
-
-			for(i <- 1 until pts.size-1){
-				part.triangle(p, pts(i), pts(i+1))
-				meshLineBuilder.line(pts(i), pts(i+1))
-			}
-			
-			
+		for (i <- 0 until graphs.length){
+			val g = graphs
+			cellMeshes(i) = new CellMesh(graphs(i), this)
 		}
 
-		// Draws a polygon connecting the midpoint to all the other points in order, then back to the first
-		def DrawPolygon2(hmidp:HVec3, hpts:Array[HVec3], color:Color, name:String){ 
-			val midp = hmidp.mul(hTransform).toPoincare
-			val pts = hpts.map(_.mul(hTransform).toPoincare)
-			val mat = materialMap.get(name) match {
-				case Some(value) => value
-				case None => 
-					val m = new Material(
-					ColorAttribute.createDiffuse(color),
-					new BlendingAttribute(true, 1f)
-					// new DepthTestAttribute(false)
-				)
-				m.set(IntAttribute.createCullFace(GL20.GL_NONE))
-				materialMap.addOne(name, m)
-				m
-			}
-			val part = builder.part(name, GL20.GL_TRIANGLES, attrs, mat)
-			// part.setColor(color)
-			for(i <- 0 until pts.size-1){
-				part.triangle(midp, pts(i), pts(i+1))
-				meshLineBuilder.line(pts(i), pts(i+1))
-			}
-			part.triangle(midp, pts.last, pts(0))
-			meshLineBuilder.line(pts.last, pts(0))
+		val vertexShader = """
+		#ifdef GL_ES
+		precision mediump float;
+		#endif
+
+		attribute vec3 a_position;
+		attribute vec4 a_color;
+
+		uniform mat4 u_projTrans;
+
+		varying vec4 v_color;
+
+		void main() {
+			v_color = a_color;
+			gl_Position = u_projTrans * vec4(a_position, 1.0);
 		}
+		"""
 
+		val fragmentShader = """
+		#ifdef GL_ES
+		precision mediump float;
+		#endif
 
+		varying vec4 v_color;
 
-		builder.end()
-		for (j <- 0 until graphs.length){
-			// if (j > 0){
-				builder.begin()
-			// }
-			meshLineBuilder = builder.part(
-				"lines",
-				GL20.GL_LINES,
-				Usage.Position,
-				material2
-			)
-			
-			val g = graphs(j)
-			val cell = g.color
-			for (f <- g.faces){
-
-				
-				DrawPolygon2(f.centerMidpt, f.centerPts, colors(cell), "c"+g.id+"m"+f.id)
-
-
-				val ridgeColor = colors(state.get(cell, Set(cell, f.oppCell)))
-				DrawPolygon2(f.pt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
-				
-				for (i <- 0 until 3){
-					val edgeColor = colors(state.get(cell, f.edges(i).faces.map(_.oppCell).appended(cell).toSet))
-					DrawPolygon(f.edgePts(i), edgeColor, "c"+g.id+"e"+f.edges(i).id)
-					val vertColor = colors(state.get(cell, f.verts(i).faces.map(_.oppCell).appended(cell).toSet))
-					DrawPolygon(f.vertPts(i), vertColor, "c"+g.id+"v"+f.verts(i).id)
-				}
-			}
-			val model = builder.end()
-
-			instances(j) = new ModelInstance(model) 
+		void main() {
+			gl_FragColor = v_color;
 		}
+		"""
 
-		// ensureUniqueMaterials()
+		// ShaderProgram.pedantic = false
+		shader = new ShaderProgram(vertexShader, fragmentShader)
 
-	// state.Twist(10, cells(10).faces(0).FaceTwistFn(1))
-
-	
-
-		
-		
-
+		if (!shader.isCompiled) {
+			println(shader.getLog)
+			throw new RuntimeException("Shader compile failed")
+		}
 
 
 		Gdx.input.setInputProcessor(defaultInputProcessor)
@@ -543,29 +412,88 @@ class Main extends ApplicationAdapter {
 		Gdx.gl.glClearColor(0, 0, 0, 1)
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT)
 
+		Gdx.gl.glEnable(GL20.GL_DEPTH_TEST)
+		Gdx.gl.glEnable(GL20.GL_BLEND)
+		Gdx.gl.glDepthFunc(GL20.GL_LEQUAL)
+
 		camera.update()
-		// viewport.apply()
-		
 
 		// camController.target.set(0f, 0f, 0f)
 		// camController.update()
 
-		modelBatch.begin(camera)
-		val cellNum = show3rdLayer match {
-			case false => 21
-			case true => 81
+
+		
+
+
+
+		shader.begin()
+		shader.setUniformMatrix("u_projTrans", camera.combined)
+
+		val cellNum = if (show3rdLayer) cellMeshes.length else 21
+
+
+		val (minCell, minIndex) = cellMeshes.take(cellNum).zipWithIndex.minBy(c => c._1.midpointDist(hTransform))
+		if (minCell != cellMeshes(0)){
+			val midGraph = graphs(minIndex)
+			print(midGraph.permutation)
+			state.Rotate(x => midGraph.permutation.inv(x))
+			hTransform = hTransform.mul(midGraph.transformation)
+			// hTransform = normalizeHMatrix(hTransform)
 		}
-		for (i <- 0 until cellNum){	
-			modelBatch.render(instances(i), environment)
+
+
+
+		for (i <- 0 until cellNum){
+
+			if (cellMeshes(i).midpointDist(hTransform) < 2){
+
+				cellMeshes(i).updateMesh(hTransform)
+
+				val triangleMesh = cellMeshes(i).triangleMesh
+				triangleMesh.render(shader, GL20.GL_TRIANGLES)
+
+				val lineMesh = cellMeshes(i).lineMesh
+				lineMesh.render(shader, GL20.GL_LINES)
+			}
 		}
-		modelBatch.end()
+
+		// val mesh = cellMeshes(20).triangleMesh
+		// mesh.render(shader, GL20.GL_TRIANGLES)
+
+
+		// val mesh = new Mesh(false, 3, 0,
+        //     new VertexAttribute(Usage.Position, 3, "a_position"),
+        //     new VertexAttribute(Usage.ColorUnpacked, 4, "a_color")
+        // )
+
+		// val t = Array(
+		// 	0f,0f,0f, 1f,0f,0f,1f,
+		// 	1f,0f,0f, 0f,1f,0f,1f,
+		// 	0f,1f,0f, 0f,0f,1f,1f
+		// )
+		// mesh.setVertices(t)
+		// mesh.render(shader, GL20.GL_TRIANGLES)
+
+		shader.end()
+
+
+
+
+		
+		// println(mesh)
+
+		
+
+
+	
 
 
 		
 	}
 
+
 	override def dispose(): Unit = {
-		modelBatch.dispose()
+		// modelBatch.dispose()
 		// model.dispose()
 	}
 
@@ -754,56 +682,38 @@ class Main extends ApplicationAdapter {
 	case class FaceHit(faceId: String, point: Vector3, distance: Float)
 
 
-	def pickFace(ray: Ray, instances: Array[ModelInstance]): Option[FaceHit] = {
+	def pickFace(ray: Ray): Option[FaceHit] = {
 		var closestHit: Option[FaceHit] = None
 		var minDst = Float.MaxValue
 
-		val invTransform = new Matrix4(instances(0).transform)
-		invTransform.inv()  // invert the model transform
+		// val invTransform = new Matrix4(instances(0).transform)
+		// invTransform.inv()  // invert the model transform
 
 		val localRay = new Ray(ray.origin.cpy(), ray.direction.cpy())
-		localRay.mul(invTransform)  // now the ray is in local coordinates
+		// localRay.mul(invTransform)  // now the ray is in local coordinates
 		val tempInstances = show3rdLayer match {
-			case true => instances
+			case true => cellMeshes
 			case false => instances.take(21)
 		}
+		val meshes = cellMeshes.filter(_.midpointDist(hTransform) < 2)
+
 		for {
-			instance <- tempInstances
-			node <- instance.nodes.asScala
-			part <- node.parts.asScala if !part.meshPart.id.equals("lines")
+			m <- meshes
+			triangle <- m.triangleArr
 		} {
-			val meshPart = part.meshPart
-			val mesh = meshPart.mesh
+			
 
-			val vertices = new Array[Float](mesh.getNumVertices * mesh.getVertexSize / 4)
-			mesh.getVertices(vertices)
-
-			val posAttr = mesh.getVertexAttribute(Usage.Position)
-			val stride = mesh.getVertexSize / 4
-			val posOffset = posAttr.offset / 4
-
-			val indices = new Array[Short](meshPart.size)
-			mesh.getIndices(meshPart.offset, meshPart.size, indices, 0)
-
-			for (i <- 0 until meshPart.size by 3) {
-			def vertex(idx: Int) = {
-				val base = idx * stride + posOffset
-				new Vector3(vertices(base), vertices(base + 1), vertices(base + 2))
-			}
-
-			val v0 = vertex(indices(i))
-			val v1 = vertex(indices(i + 1))
-			val v2 = vertex(indices(i + 2))
+			val (v0,v1,v2) = triangle.toVec3(hTransform)
 
 			val intersection = new Vector3()
 			if (Intersector.intersectRayTriangle(localRay, v0, v1, v2, intersection)) {
 				val dst = localRay.origin.dst2(intersection)
 				if (dst < minDst) {
 				minDst = dst
-				closestHit = Some(FaceHit(meshPart.id, intersection.cpy(), dst))
+				closestHit = Some(FaceHit(triangle.name, intersection.cpy(), dst))
 				}
 			}
-			}
+			
 		}
 
 		closestHit
@@ -846,6 +756,7 @@ class Main extends ApplicationAdapter {
 
 		override def touchDragged(screenX: Int, screenY: Int, pointer: Int): Boolean = {
 			if (rotating) {
+				// println("rotating")
 				val dx = (screenX - lastX) * sensitivity
 				val dy = (screenY - lastY) * sensitivity
 
@@ -855,25 +766,27 @@ class Main extends ApplicationAdapter {
 				}
 				// build incremental quaternions
 				if (leftClickDown){
-					val qYaw   = new Quaternion(Vector3.Y, dx)  // rotate around Y
-					val qPitch = new Quaternion(Vector3.X, dy)  // rotate around X
+					val tYaw   = new Matrix4().setToRotation(Vector3.Y, dx)  // rotate around Y
+					val tPitch = new Matrix4().setToRotation(Vector3.X, dy)  // rotate around X
 
 					// update orientation (order matters!)
-					orientation.mulLeft(qYaw).mulLeft(qPitch)
+					hTransform.mulLeft(tYaw).mulLeft(tPitch)
 
 				}
 
 				if (rightClickDown){
-					val transformX = TranslationMat(HVec(Vector3.X, 1))
+					val transformX = TranslationMat(HVec(Vector3.X, dx * 0.02f))
+					val transformY = TranslationMat(HVec(Vector3.Y, dy * -0.02f))
+
 
 					// hTransform.mulLeft(transformX)
-					hTransform.mul(transformX)
+					hTransform.mulLeft(transformX).mulLeft(transformY)
 				}
 				
 
 
 				// apply orientation to the cube
-				instances.map(_.transform.idt().rotate(orientation))
+				// instances.map(_.transform.idt().rotate(orientation))
 
 				lastX = screenX
 				lastY = screenY
@@ -895,26 +808,18 @@ class Main extends ApplicationAdapter {
 			// Only pick if it was a click, not a drag
 			if (!dragDetected) {
 				val ray = camera.getPickRay(screenX.toFloat, screenY.toFloat)
-				pickFace(ray, instances) match {
+				pickFace(ray) match {
 					case Some(hit) =>
 						val btn = button match {
 							case Buttons.LEFT => -1
 							case Buttons.RIGHT => 1
 							case Buttons.MIDDLE =>
 								val (cell, _) = parseMeshID(hit.faceId)
-								if (cell < 20){
-									val rotStr =  "c"+cell
-									state.Rotate(CenterCell(cell))
-									state.moveList.addOne(rotStr)
-									val axis = graphs(cell).midpoint.to3D
-									println(axis)
-									val rot = new Quaternion(axis, 180f)
-									orientation = orientation.mul(rot)
+								val m = cellMeshes(cell).midpoint(hTransform)
+								hTransform.mulLeft(TranslationMat(-m))
+								hTransform = normalizeHMatrix(hTransform)
 
-									instances.map(_.transform.idt().rotate(orientation))
-									isDirty = true
-								}
-								updateColors
+								// updateColors
 								0
 
 							case _: Int => 0
@@ -944,7 +849,7 @@ class Main extends ApplicationAdapter {
 								state.undoStack.clear()
 								isDirty = true
 							}
-							updateColors
+							// updateColors
 							
 						}
 							
@@ -984,13 +889,15 @@ class Main extends ApplicationAdapter {
 											randomMove
 										}
 									}
+
+									// println(state.scrambleList)
 									isDirty = true
 								}
-								Gdx.app.postRunnable(new Runnable {
-									override def run(): Unit = {
-										updateColors
-									}
-								})
+								// Gdx.app.postRunnable(new Runnable {
+								// 	override def run(): Unit = {
+								// 		updateColors
+								// 	}
+								// })
 								
 							}
 						})
@@ -1005,21 +912,24 @@ class Main extends ApplicationAdapter {
 									
 								
 								}
-								Gdx.app.postRunnable(new Runnable {
-									override def run(): Unit = {
-										updateColors
-									}
-								})
+								// Gdx.app.postRunnable(new Runnable {
+								// 	override def run(): Unit = {
+								// 		updateColors
+								// 	}
+								// })
 							}
 						})
 
 
-					case 8 => 
-						val transformX = TranslationMat(HVec(Vector3.X, 1))
+					// case 8 => 
+					// 	println(hTransform)
+					// 	hTransform = normalizeHMatrix(hTransform)
+					// 	println(hTransform)
+						
+						
 
-						// hTransform.mulLeft(transformX)
-						hTransform.mul(transformX)
-						println(hTransform)
+						
+
 						
 					
 					case _ => ()
