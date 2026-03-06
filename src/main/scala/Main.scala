@@ -848,8 +848,13 @@ class Main extends ApplicationAdapter {
 							case Buttons.LEFT => -1
 							case Buttons.RIGHT => 1
 							case Buttons.MIDDLE =>
-								val (cell, _) = parseMeshID(hit.faceId)
-								val m = cellMeshes(cell).midpoint(hTransform)
+								val (cell, node) = parseMeshID(hit.faceId)
+								var m :HVec3 = new HVec3
+								if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT) || Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
+									m = node.pt.mul(hTransform)
+								} else {
+									m = cellMeshes(cell).midpoint(hTransform)
+								}
 								hTransform.mulLeft(TranslationMat(-m))
 								hTransform = polarProject(hTransform)
 

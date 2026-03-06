@@ -30,7 +30,7 @@ object CellMeshes {
             lineArr.addAll(p._2)
 
             val ridgeColor = colors(state.get(cell, Set(cell, f.oppCell)))
-            p = TriangularisePolygon2(f.pt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
+            p = TriangularisePolygon2(f.stickerPt, f.ridgePts, ridgeColor, "c"+g.id+"f"+f.id)
             triangleArr.addAll(p._1)
             lineArr.addAll(p._2)
 

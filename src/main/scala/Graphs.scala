@@ -166,7 +166,7 @@ object Graphs {
 
 			def transform(tf: HVec3 => HVec3) {
 				for (face <- faces){
-					face.pt = tf(face.pt)
+					face.stickerPt = tf(face.stickerPt)
 					face.ridgePts = face.ridgePts.map(tf)
 					face.edgePts = face.edgePts.map(_.map(tf))
 					face.vertPts = face.vertPts.map(_.map(tf))
@@ -174,8 +174,8 @@ object Graphs {
 					face.centerMidpt = tf(face.centerMidpt)
 				}
 				
-				edges.foreach(n => n.pt = tf(n.pt))
-				verts.foreach(n => n.pt = tf(n.pt))
+				edges.foreach(n => n.stickerPt = tf(n.stickerPt))
+				verts.foreach(n => n.stickerPt = tf(n.stickerPt))
 				// midpoint = tf(midpoint)
 
 			}
@@ -392,6 +392,8 @@ object Graphs {
 				}
 				offset += 1
 			}
+
+
 		}
 
 
@@ -404,6 +406,8 @@ object Graphs {
 			var twistPerm = Permutations.Cell11.id
 
 			override def toString(): String = "n"+id
+
+			var stickerPt : HVec3 = pt
 
 			
 			def setFace(id:Int, nb:Face) : Boolean = {
@@ -508,6 +512,12 @@ object Graphs {
 					edgePts(i)(3) = hlerp(edgePts(i)(2), edgePts(i)(4))
 
 				}
+
+				for (i <- 0 until size){
+					verts(i).stickerPt = verts(i).pt.cpy
+					edges(i).stickerPt = edges(i).pt.cpy
+				}
+				stickerPt = pt.cpy
 
 				val (midpt, pts) = getPolygon
 				val f = {x:HVec3 => x.hscl(centerSize)} // mobiusScalarMultiply(centerSize, _)
