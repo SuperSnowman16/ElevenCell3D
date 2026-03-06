@@ -146,7 +146,7 @@ class Main extends ApplicationAdapter {
 	var lastX = 0
 	var lastY = 0
 	var rotating = false
-	var show3rdLayer = false
+	var show3rdLayer = true
 
 	val graph = Graphs.GenerateGraph
 	// graph.transform(mobiusScalarMultiply(0.8f, _))
@@ -184,12 +184,12 @@ class Main extends ApplicationAdapter {
 
 
 	val layer4 = new ArrayBuffer[Graph]
-	for (i <- 21 until graphs.length){
+	for (i <- 1 until graphs.length){
 		val g = graphs(i)
 		for (i <- 0 until 20){
 			val newMidpt = hlerp(g.midpoint, g.faces(i).pt, 2f) 
 			val minDist = graphs.map(g => hdist(g.midpoint, newMidpt)).min
-			if (minDist > .5){
+			if (minDist > .5 && newMidpt.hdist < 4){
 				graphs.addOne(g.mirror(i))
 			}
 		}
@@ -205,6 +205,12 @@ class Main extends ApplicationAdapter {
 	
 	for(i <- 0 until graphs.length){
 		graphs(i).id = i
+	}
+
+	for (i <- 0 until graphs.length){
+		if (graphs(i).permutation.inv(graphs(i).color) != graph.color){
+			println("bad perm: " + i)
+		}
 	}
 
 	instances = new Array[ModelInstance](graphs.length)
@@ -447,13 +453,27 @@ class Main extends ApplicationAdapter {
 
 
 		val (minCell, minIndex) = cellMeshes.take(cellNum).zipWithIndex.minBy(c => c._1.midpointDist(hTransform))
-		if (minCell != cellMeshes(0)){
+		if (minIndex != 0){
 			val midGraph = graphs(minIndex)
+			val prevMidColor = state.get(midGraph.color, Set(midGraph.color))
+			// println(prevMidColor)
 			// print(midGraph.permutation)
 			state.Rotate(x => midGraph.permutation.inv(x))
+
+			val newMidColor = state.get(0, Set(0))
+			
+			if (prevMidColor != newMidColor){
+				println(prevMidColor + " to " + newMidColor)
+				println("graphIndex = " + minIndex)
+				println()
+			}
+
+
 			hTransform = hTransform.mul(midGraph.transformation)
 			hTransform = polarProject(hTransform)
 		}
+
+
 
 
 

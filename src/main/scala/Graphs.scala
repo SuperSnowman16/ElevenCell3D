@@ -156,9 +156,9 @@ object Graphs {
 
 				}
 
-				println(midpoint.mul(mirror))
+				// println(midpoint.mul(mirror))
 
-				new Graph(newFaces, newEdges, newVerts, midpoint.mul(mirror), faceID, mirrorPerm(color), !isMirrored, transformation.cpy.mulLeft(mirror), permutation * mirrorPerm)
+				new Graph(newFaces, newEdges, newVerts, midpoint.mul(mirror), faceID, mirrorPerm(color), !isMirrored, transformation.cpy.mulLeft(mirror), mirrorPerm * permutation)
 			}
 
 			def getOpp(i:Int) : Int = (i+10)%20
