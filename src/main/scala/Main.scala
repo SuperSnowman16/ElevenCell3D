@@ -307,9 +307,6 @@ class Main extends ApplicationAdapter {
 			val color = graphs(cell.toInt).color
 			(color, Set(color))
 		case s"c${cell}p${petal}f${face}" => 
-			if (petal.toInt > 3){
-				println(id)
-			}
 			val color = graphs(cell.toInt).color
 			val f = graphs(cell.toInt).faces(face.toInt)
 			(color, (-1 to 1).map(j => f.verts(petal.toInt).getOffsetFace(f, j).oppCell).appended(color).toSet)

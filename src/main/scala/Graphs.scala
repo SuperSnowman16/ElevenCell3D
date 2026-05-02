@@ -31,7 +31,7 @@ object Graphs {
 
 		def firstVectors : (HVec3, HVec3, HVec3) = {
 				val (f,e,v) = radii353
-				println(radii353)
+				// println(radii353)
 				val r1 = HVec(new Vector3(f, 0, 0), f)
 
 				val sinA = sqrt((3-sqrt(5))/6).toFloat

@@ -55,7 +55,7 @@ class State(cells:Array[Graph], main:Main) {
             }
         }
 
-        println(stateMap.size)
+        // println(stateMap.size)
 
         main.markColorsDirty()
 
@@ -173,7 +173,7 @@ class State(cells:Array[Graph], main:Main) {
                 val newPerm = new Permutation(perm.map(c => charArr11.indexOf(c)).toArray)
                 val offsetPerm = newPerm*main.permTransform.inv
                 val (cell, node) = main.parseMeshID("c"+twist)
-                println("twist")
+                // println("twist")
                 Rotate(x => offsetPerm(x))
                 Twist(main.graphs(cell).color, node.TwistFn(dir.toInt))
                 Rotate(x => offsetPerm.inv(x))
@@ -200,14 +200,14 @@ class State(cells:Array[Graph], main:Main) {
     } 
 
     def StrUndo(s:String){
-        println(s)
+        // println(s)
         undoStack.push(s)
         s match {
             case s"${perm}:${dir}t${twist}" => 
                 val newPerm = new Permutation(perm.map(c => charArr11.indexOf(c)).toArray)
                 val offsetPerm = newPerm*main.permTransform.inv
                 val (cell, node) = main.parseMeshID("c"+twist)
-                println("twist")
+                // println("twist")
                 Rotate(x => offsetPerm(x))
                 Twist(main.graphs(cell).color, node.TwistFn(-dir.toInt))
                 Rotate(x => offsetPerm.inv(x))
