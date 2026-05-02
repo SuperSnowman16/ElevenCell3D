@@ -5,7 +5,6 @@ import com.badlogic.gdx.math.Vector4
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Matrix4._
 
-import scala.annotation.meta.superArg
 import scala.collection.mutable.ArrayBuffer
 // import slash.vector._
 
