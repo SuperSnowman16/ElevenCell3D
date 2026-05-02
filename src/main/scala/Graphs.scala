@@ -26,7 +26,6 @@ object Graphs {
 			val f = acosh((sqrt(15)+sqrt(3))/4).toFloat
 			val e = acosh((3+sqrt(5))/(2*sqrt(3))).toFloat
 			val v = atanh(sqrt(16*sqrt(5) - 35)).toFloat
-
 			(f,e,v)
 		}
 
@@ -147,9 +146,14 @@ object Graphs {
 					val mirr = {x:HVec3 => x.mul(mirror)}
 					newF.edgePts = f.edgePts.map(x => x.map(mirr))
 					newF.vertPts = f.vertPts.map(x => x.map(mirr))
+					newF.petalPts = f.petalPts.map(x => x.map(mirr))
+					newF.wingPts = f.wingPts.map(x => x.map(mirr))
+
+
 					newF.ridgePts = f.ridgePts.map(mirr)
 					newF.centerPts = f.centerPts.map(mirr)
 					newF.centerMidpt = mirr(f.centerMidpt)
+					
 
 					newF.faceMirror = mirrorPerm * f.faceMirror * mirrorPerm
 					newF.oppCell = mirrorPerm(f.oppCell)
@@ -169,6 +173,10 @@ object Graphs {
 					face.stickerPt = tf(face.stickerPt)
 					face.ridgePts = face.ridgePts.map(tf)
 					face.edgePts = face.edgePts.map(_.map(tf))
+					face.petalPts = face.petalPts.map(_.map(tf))
+					face.wingPts = face.wingPts.map(_.map(tf))
+
+
 					face.vertPts = face.vertPts.map(_.map(tf))
 					face.centerPts = face.centerPts.map((tf))
 					face.centerMidpt = tf(face.centerMidpt)
@@ -479,39 +487,113 @@ object Graphs {
 			var ridgePts = new Array[HVec3](size*2)
 			var edgePts = Array.ofDim[HVec3](size,6)
 			var vertPts = Array.ofDim[HVec3](size,4)
+			var petalPts = Array.ofDim[HVec3](size,4)
+			var wingPts = Array.ofDim[HVec3](size*2,3)
+
 
 			def generateStickers {
 				val ridgeMidpts = new Array[HVec3](size)
+				val petalMidpts = new Array[HVec3](size)
 				val edgeMidpts = Array.ofDim[HVec3](size,2)
 
+				// for (i <- 0 until size){
+				// 	ridgeMidpts(i) = hlerp(verts(i).pt, pt, cutDepth*.75f)
+				// 	petalMidpts(i) = hlerp(verts(i).pt, ridgeMidpts(i), .6f)
+				// 	ridgePts(2*i) = hlerp(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
+				// 	edgeMidpts(i)(0) = hlerp(verts(i).pt, edges(i).pt, cutDepth*.5f)
+				// 	edgeMidpts(i)(1) = hlerp(getVertex(i+1).pt, edges(i).pt, cutDepth*.5f)
+				// }
+
+				// for (i <- 0 until size){
+				// 	ridgePts(2*i+1) = hlerp(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
+				// 	val (e,v) = (edges(i).pt, verts(i).pt)
+				// 	vertPts(i)(0) = v.cpy()
+				// 	vertPts(i)(1) = hlerp(v, edgeMidpts(i)(0), stickerSize)
+				// 	vertPts(i)(2) = hlerp(v, ridgeMidpts(i), stickerSize)
+				// 	vertPts(i)(3) = hlerp(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
+				// }
+
+				// for (i <- 0 until size){
+				// 	val (e,v, v2) = (edges(i).pt, verts(i).pt, verts((i+1)%size).pt)
+
+				// 	edgePts(i)(0) = e.cpy()
+				// 	edgePts(i)(1) = hlerp(v2, edgeMidpts(i)(1), 1.2f/stickerSize)
+				// 	edgePts(i)(2) = hlerp(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
+				// 	edgePts(i)(4) = hlerp(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
+				// 	edgePts(i)(5) = hlerp(v, edgeMidpts(i)(0), 1.2f/stickerSize)
+
+				// 	edgePts(i)(3) = hlerp(edgePts(i)(2), edgePts(i)(4))
+
+				// }
+
+				// for (i <- 0 until size){
+				// 	petalPts(i)(0) = vertPts(i)(2)
+				// 	vertPts(i)(2) = hlerp(verts(i).pt, petalMidpts(i), stickerSize)
+				// 	petalPts(i)(2) = hlerp(petalPts(i)(0), vertPts(i)(2), stickerSize)
+					
+
+				// 	petalPts(i)(1) = hlerp(verts(i).pt, edgeMidpts(i)(0), 1f/stickerSize)
+				// 	petalPts(i)(3) = hlerp(verts(i).pt, edgeMidpts(mod(i-1,size))(1), 1f/stickerSize)
+
+				// }
+
 				for (i <- 0 until size){
-					ridgeMidpts(i) = hlerp(verts(i).pt, pt, cutDepth*.75f)
-					ridgePts(2*i) = hlerp(verts(i).pt, ridgeMidpts(i), 1/stickerSize)
-					edgeMidpts(i)(0) = hlerp(verts(i).pt, edges(i).pt, cutDepth*.5f)
-					edgeMidpts(i)(1) = hlerp(getVertex(i+1).pt, edges(i).pt, cutDepth*.5f)
+					ridgePts(2*i) = hlerp(pt, verts(i).pt, cutDepth)
+					ridgePts(2*i+1) = hlerp(pt, edges(i).pt, cutDepth)
+
 				}
 
+				val edgeRatio = (1 + 2*cutDepth)/3
 				for (i <- 0 until size){
-					ridgePts(2*i+1) = hlerp(ridgePts(2*i), ridgePts(mod(2*i+2, 2*size)))
-					val (e,v) = (edges(i).pt, verts(i).pt)
-					vertPts(i)(0) = v.cpy()
-					vertPts(i)(1) = hlerp(v, edgeMidpts(i)(0), stickerSize)
-					vertPts(i)(2) = hlerp(v, ridgeMidpts(i), stickerSize)
-					vertPts(i)(3) = hlerp(v, edgeMidpts(mod(i-1,size))(1), stickerSize)
-				}
-
-				for (i <- 0 until size){
-					val (e,v, v2) = (edges(i).pt, verts(i).pt, verts((i+1)%size).pt)
-
+					val e = edges(i).pt
 					edgePts(i)(0) = e.cpy()
-					edgePts(i)(1) = hlerp(v2, edgeMidpts(i)(1), 1/stickerSize)
-					edgePts(i)(2) = hlerp(vertPts((i+1)%size)(1), vertPts((i+1)%size)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(4) = hlerp(vertPts(i)(3), vertPts(i)(2), 1/(stickerSize*stickerSize))
-					edgePts(i)(5) = hlerp(v, edgeMidpts(i)(0), 1/stickerSize)
+					edgePts(i)(1) = hlerp(e, verts(i).pt, edgeRatio)
+					edgePts(i)(2) = ridgePts(2*i)
+					edgePts(i)(3) = ridgePts(2*i+1)
+					edgePts(i)(4) = ridgePts((2*i+2)%(2*size))
+					edgePts(i)(5) = hlerp(e, getVertex(i+1).pt, edgeRatio)
+				}
 
-					edgePts(i)(3) = hlerp(edgePts(i)(2), edgePts(i)(4))
+				val wingRatio = .2f
+				val petalRatio = .5f
+
+				for (i <- 0 until size){
+					val v = verts(i).pt
+					vertPts(i)(0) = v.cpy()
+					vertPts(i)(1) = hlerp(edgePts(i)(1), v, wingRatio)
+					vertPts(i)(2) = hlerp(ridgePts(2*i), v, petalRatio)
+					vertPts(i)(3) = hlerp(edgePts(mod(i-1, size))(5), v, wingRatio)
+
+					petalPts(i)(0) = vertPts(i)(2)
+					petalPts(i)(1) = edgePts(i)(1)
+					petalPts(i)(2) = ridgePts(2*i)
+					petalPts(i)(3) = edgePts(mod(i-1, size))(5)
+
+					wingPts(2*i)(0) = vertPts(i)(2)
+					wingPts(2*i)(1) = edgePts(mod(i-1, size))(5)
+					wingPts(2*i)(2) = vertPts(i)(3)
+
+					wingPts(2*i+1)(0) = vertPts(i)(2)
+					wingPts(2*i+1)(1) = edgePts(i)(1)
+					wingPts(2*i+1)(2) = vertPts(i)(1)
 
 				}
+
+				for (i <- 0 until size){
+					vertPts(i).mapInPlace(x => hlerp(verts(i).pt, x, stickerSize))
+					edgePts(i).mapInPlace(x => hlerp(edges(i).pt, x, stickerSize))
+					ridgePts.mapInPlace(x => hlerp(pt, x, stickerSize))
+
+					val petalMidpt = hlerp(petalPts(i)(0), petalPts(i)(2))
+					petalPts(i).mapInPlace(x => hlerp(petalMidpt, x, stickerSize))
+
+					val wingMidpt = hlerp(wingPts(2*i)(1), wingPts(2*i)(2))
+					wingPts(2*i).mapInPlace(x => hlerp(wingMidpt, x, stickerSize))
+
+					val wingMidpt2 = hlerp(wingPts(2*i+1)(1), wingPts(2*i+1)(2))
+					wingPts(2*i+1).mapInPlace(x => hlerp(wingMidpt2, x, stickerSize))
+				}
+
 
 				for (i <- 0 until size){
 					verts(i).stickerPt = verts(i).pt.cpy

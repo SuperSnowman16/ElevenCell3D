@@ -44,38 +44,61 @@ object CellMeshes {
                 p = TriangularisePolygon(f.vertPts(i), vertColor, "c"+g.id+"v"+f.verts(i).id)
                 triangleArr.addAll(p._1)
                 lineArr.addAll(p._2)
+
+                
+                val petalColor = colors(state.get(cell, (-1 to 1).map(j => f.verts(i).getOffsetFace(f, j).oppCell).appended(cell).toSet))
+                p = TriangularisePolygon(f.petalPts(i), petalColor, "c"+g.id+"p"+i+"f"+f.id)
+                triangleArr.addAll(p._1)
+                lineArr.addAll(p._2)
+
+                val wingColor = colors(state.get(cell, (-1 to 2).map(j => f.verts(i).getOffsetFace(f, j).oppCell).appended(cell).toSet))
+                p = TriangularisePolygon(f.wingPts(2*i), wingColor, "c"+g.id+"w"+(2*i)+"f"+f.id)
+                // println(p)
+
+                triangleArr.addAll(p._1)
+                lineArr.addAll(p._2)
+
+                val wingColor2 = colors(state.get(cell, (-2 to 1).map(j => f.verts(i).getOffsetFace(f, j).oppCell).appended(cell).toSet))
+                p = TriangularisePolygon(f.wingPts(2*i+1), wingColor2, "c"+g.id+"w"+(2*i+1)+"f"+f.id)
+                // println(p)
+
+                triangleArr.addAll(p._1)
+                lineArr.addAll(p._2)
+
             }
         }
 
+        val triangleVertexData = triangleArr.flatMap(_.toFloatArr).toArray
         val triangleMesh = new Mesh(false, triangleArr.length*3, 0,
-            new VertexAttribute(Usage.Position, 3, "a_position"),
+            new VertexAttribute(Usage.Position, 4, "a_hyper"),
             new VertexAttribute(Usage.ColorUnpacked, 4, "a_color")
         )
 
-        val triangleFloatArr = triangleArr.flatMap(_.toFloatArr)
+        triangleMesh.setVertices(triangleVertexData)
 
-        triangleMesh.setVertices(triangleFloatArr.toArray)
-
-        
+        val lineVertexData = lineArr.flatMap(_.toFloatArr).toArray
         val lineMesh = new Mesh(false, lineArr.length*2, 0,
-            new VertexAttribute(Usage.Position, 3, "a_position"),
+            new VertexAttribute(Usage.Position, 4, "a_hyper"),
             new VertexAttribute(Usage.ColorUnpacked, 4, "a_color")
         )
 
-        val lineFloatArr = lineArr.flatMap(_.toFloatArr)
-
-        lineMesh.setVertices(lineFloatArr.toArray)
+        lineMesh.setVertices(lineVertexData)
 
 
-        def updateMesh(transform: Matrix4){
-
-            triangleArr.map(_.updateColor)
-
-            val newTriangleFloatArr = triangleArr.flatMap(_.toFloatArr(transform))
-            val newLineFloatArr = lineArr.flatMap(_.toFloatArr(transform))
-
-            triangleMesh.setVertices(newTriangleFloatArr.toArray)
-            lineMesh.setVertices(newLineFloatArr.toArray)
+        def updateMesh(): Unit = {
+            var idx = 0
+            for (triangle <- triangleArr) {
+                triangle.updateColor
+                val c = triangle.color
+                for (_ <- 0 until 3) {
+                    triangleVertexData(idx + 4) = c.r
+                    triangleVertexData(idx + 5) = c.g
+                    triangleVertexData(idx + 6) = c.b
+                    triangleVertexData(idx + 7) = c.a
+                    idx += 8
+                }
+            }
+            triangleMesh.updateVertices(0, triangleVertexData, 0, triangleVertexData.length)
         }
 
         def midpoint(transform : Matrix4) : HVec3 = {
@@ -90,18 +113,22 @@ object CellMeshes {
         class Triangle(val v1:HVec3, val v2:HVec3, val v3:HVec3, var color:Color, val name:String){
             def toFloatArr : ArrayBuffer[Float] = {
                 val colArr = ArrayBuffer(color.r, color.g, color.b, color.a)
-                v1.toPoincareArray ++ colArr ++ v2.toPoincareArray ++ colArr  ++ v3.toPoincareArray ++ colArr
+                if (color.a == 0f){
+                    println("zero")
+                }
+                v1.toFloatArr ++ colArr ++ v2.toFloatArr ++ colArr  ++ v3.toFloatArr ++ colArr
             }
 
             def toFloatArr(transform: Matrix4) : ArrayBuffer[Float] = {
                 val colArr = ArrayBuffer(color.r, color.g, color.b, color.a)
-                v1.mul(transform).toPoincareArray ++ colArr ++ v2.mul(transform).toPoincareArray ++ colArr  ++ v3.mul(transform).toPoincareArray ++ colArr
+                v1.mul(transform).toFloatArr ++ colArr ++ v2.mul(transform).toFloatArr ++ colArr  ++ v3.mul(transform).toFloatArr ++ colArr
                 // v1.mul(transform).toPoincareArray ++ redArr ++ v2.mul(transform).toPoincareArray ++ blueArr  ++ v3.mul(transform).toPoincareArray ++ greenArr
 
             }
 
             def updateColor {
                 color = colors(state.get(main.meshIDtoGrip(name)))
+               
             }
 
             def toVec3(transform : Matrix4): (Vector3,Vector3,Vector3) = {
@@ -112,11 +139,11 @@ object CellMeshes {
         class Line(val v1:HVec3, val v2:HVec3){
             def toFloatArr : ArrayBuffer[Float] = {
                 val colArr = ArrayBuffer(0f, 0f, 0f, 1f)
-                v1.toPoincareArray ++ colArr ++ v2.toPoincareArray ++ colArr
+                v1.toFloatArr ++ colArr ++ v2.toFloatArr ++ colArr
             }
             def toFloatArr(transform: Matrix4) : ArrayBuffer[Float] = {
                 val colArr = ArrayBuffer(0f ,0f , 0f, 1f)
-                v1.mul(transform).toPoincareArray ++ colArr ++ v2.mul(transform).toPoincareArray ++ colArr 
+                v1.mul(transform).toFloatArr ++ colArr ++ v2.mul(transform).toFloatArr ++ colArr 
             }
         }
 
@@ -125,13 +152,16 @@ object CellMeshes {
             val triangles = new ArrayBuffer[Triangle]
             val lines = new ArrayBuffer[Line]
             val p = pts(0)
-            lines.addOne(new Line(p, pts(0)))
+            lines.addOne(new Line(p, pts(1)))
             lines.addOne(new Line(p, pts.last))
+            
 
             for(i <- 1 until pts.size-1){
                 triangles.addOne(new Triangle(p, pts(i), pts(i+1), color, name))
                 lines.addOne(new Line(pts(i), pts(i+1)))
             }
+
+
 
             return (triangles, lines)
         }

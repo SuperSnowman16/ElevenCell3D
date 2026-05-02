@@ -117,6 +117,10 @@ object Hyperboloid {
             }
             return ArrayBuffer[Float](vx,vy,vz)
         }
+
+        def toFloatArr : ArrayBuffer[Float] = {
+            return ArrayBuffer[Float](x,y,z,t)
+        }
     } 
 
     // Creates an HVec3 going in the direction of dir, a (hyperbolic) distance of r from the origin

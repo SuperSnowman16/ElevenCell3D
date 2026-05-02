@@ -50,6 +50,18 @@ object Permutations {
             arr.zipWithIndex.mkString(",")
         }
 
+        val charArr11 = Array('0','1','2','3','4','5','6','7','8','9','t')
+
+        def toString11 : String = {
+            arr.map(x => charArr11(x)).mkString("")
+        }
+
+        def fromString11(s:String) : Permutation = {
+            val charMap = charArr11.zipWithIndex.toMap
+            val newArr = s.map(c => charMap(c)).toArray
+            new Permutation(newArr)
+        }
+
         override def equals(obj : Any): Boolean = {
             obj match {
                 case p: Permutation => 

@@ -57,6 +57,7 @@ import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import LorentzPolar.polarProject
 import scala.collection.mutable.ArrayBuffer
+import Permutations.Cell11
 
 
 object Main {
@@ -67,8 +68,8 @@ object Main {
 	private val defaultDir = Paths.get("Saves")
 	Files.createDirectories(defaultDir)
 
-	val stickerSize = .8f
-	val cutDepth = .7f
+	val stickerSize = .85f
+	val cutDepth = .2f
 	val cellSize = .6f
 	val centerSize = .5f
 	val transparency = .5f
@@ -119,6 +120,8 @@ class Main extends ApplicationAdapter {
 
 	var hTransform = IdMatrix
 
+	var permTransform = Cell11.id
+
 	val M = TranslationMat(HVec(Vector3.X, 1))
 	// hTransform = M.mul(M.cpy.inv)
 
@@ -147,8 +150,13 @@ class Main extends ApplicationAdapter {
 	var lastY = 0
 	var rotating = false
 	var show3rdLayer = true
+	@volatile private var meshColorsDirty = true
 
 	val graph = Graphs.GenerateGraph
+
+	def markColorsDirty(): Unit = {
+		meshColorsDirty = true
+	}
 	// graph.transform(mobiusScalarMultiply(0.8f, _))
 	// graph.transform(_.scl(0.8f))
 	
@@ -285,6 +293,8 @@ class Main extends ApplicationAdapter {
 
 	def parseMeshID(id: String): (Int, Node) = id match {
 		case s"c${cell}m${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
+		case s"c${cell}p${petal}f${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
+		case s"c${cell}w${wing}f${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
 		case s"c${cell}f${face}" => (cell.toInt, graphs(cell.toInt).faces(face.toInt))
 		case s"c${cell}e${edge}" => (cell.toInt, graphs(cell.toInt).edges(edge.toInt))
 		case s"c${cell}v${vert}" => (cell.toInt, graphs(cell.toInt).verts(vert.toInt))
@@ -296,6 +306,18 @@ class Main extends ApplicationAdapter {
 		case s"c${cell}m${face}" => 
 			val color = graphs(cell.toInt).color
 			(color, Set(color))
+		case s"c${cell}p${petal}f${face}" => 
+			if (petal.toInt > 3){
+				println(id)
+			}
+			val color = graphs(cell.toInt).color
+			val f = graphs(cell.toInt).faces(face.toInt)
+			(color, (-1 to 1).map(j => f.verts(petal.toInt).getOffsetFace(f, j).oppCell).appended(color).toSet)
+		case s"c${cell}w${wing}f${face}" => 
+			val color = graphs(cell.toInt).color
+			val f = graphs(cell.toInt).faces(face.toInt)
+			val range = if (wing.toInt % 2 == 1) (-2 to 1) else (-1 to 2)
+			(color, range.map(j => f.verts(wing.toInt / 2).getOffsetFace(f, j).oppCell).appended(color).toSet)
 		case s"c${cell}f${face}" => 
 			val color = graphs(cell.toInt).color
 			(color, Set(color, graphs(cell.toInt).faces(face.toInt).oppCell))
@@ -378,21 +400,47 @@ class Main extends ApplicationAdapter {
 			cellMeshes(i) = new CellMesh(graphs(i), this)
 		}
 
+		// val vertexShader = """
+		// #ifdef GL_ES
+		// precision mediump float;
+		// #endif
+
+		// attribute vec3 a_position;
+		// attribute vec4 a_color;
+
+		// uniform mat4 u_projTrans;
+
+		// varying vec4 v_color;
+
+		// void main() {
+		// 	v_color = a_color;
+		// 	gl_Position = u_projTrans * vec4(a_position, 1.0);
+		// }
+		// """
+
 		val vertexShader = """
 		#ifdef GL_ES
 		precision mediump float;
 		#endif
 
-		attribute vec3 a_position;
+		attribute vec4 a_hyper;
 		attribute vec4 a_color;
 
+		uniform mat4 u_hTransform;
 		uniform mat4 u_projTrans;
 
 		varying vec4 v_color;
 
+		vec3 toPoincare(vec4 X) {
+			return X.xyz / (X.w + 1.0);
+		}
+
 		void main() {
+			vec4 Hx = u_hTransform * a_hyper;
+			vec3 p = toPoincare(Hx);
+
+			gl_Position = u_projTrans * vec4(p, 1.0);
 			v_color = a_color;
-			gl_Position = u_projTrans * vec4(a_position, 1.0);
 		}
 		"""
 
@@ -446,6 +494,16 @@ class Main extends ApplicationAdapter {
 
 
 
+		// if (meshColorsDirty) {
+		// 	val cellNum = if (show3rdLayer) cellMeshes.length else 21
+		// 	for (i <- 0 until cellNum) {
+		// 		if (cellMeshes(i).midpointDist(hTransform) < 2) {
+		// 			cellMeshes(i).updateMesh()
+		// 		}
+		// 	}
+		// 	meshColorsDirty = false
+		// }
+
 		shader.begin()
 		shader.setUniformMatrix("u_projTrans", camera.combined)
 
@@ -459,6 +517,7 @@ class Main extends ApplicationAdapter {
 			// println(prevMidColor)
 			// print(midGraph.permutation)
 			state.Rotate(x => midGraph.permutation.inv(x))
+			permTransform = (midGraph.permutation.inv)*permTransform
 
 			val newMidColor = state.get(0, Set(0))
 			
@@ -473,15 +532,19 @@ class Main extends ApplicationAdapter {
 			hTransform = polarProject(hTransform)
 		}
 
+		shader.setUniformMatrix("u_hTransform", hTransform)
+		// println(hTransform)
 
-
-
+		// println("State: " + state.getOrientation)
+		// println("Perm:  " + permTransform.inv.toString11)	
 
 		for (i <- 0 until cellNum){
 
 			if (cellMeshes(i).midpointDist(hTransform) < 2){
 
-				cellMeshes(i).updateMesh(hTransform)
+				
+				cellMeshes(i).updateMesh()
+				
 
 				val triangleMesh = cellMeshes(i).triangleMesh
 				triangleMesh.render(shader, GL20.GL_TRIANGLES)
@@ -490,6 +553,10 @@ class Main extends ApplicationAdapter {
 				lineMesh.render(shader, GL20.GL_LINES)
 			}
 		}
+
+		
+		meshColorsDirty = false
+	
 
 		// val mesh = cellMeshes(20).triangleMesh
 		// mesh.render(shader, GL20.GL_TRIANGLES)
@@ -873,18 +940,15 @@ class Main extends ApplicationAdapter {
 
 						if (dir != 0){
 							if (Gdx.input.isKeyPressed(Keys.CONTROL_LEFT)){
-								val rotStr = dir+"r"+cell+node
 								state.Rotate(node.TwistFn(dir))
-								state.moveList.addOne(rotStr)
-								state.undoStack.clear()
-								isDirty = true
-								
+								permTransform = (node.twistPerm^dir)*permTransform
+							
 									
 								
 							}else{
 								val rotStr = dir+"t"+cell+node.toString()
 								state.Twist(graphs(cell).color, node.TwistFn(dir)) 
-								state.moveList.addOne(rotStr)
+								state.moveList.addOne(permTransform.toString11 +":"+ rotStr)
 								state.undoStack.clear()
 								isDirty = true
 							}
